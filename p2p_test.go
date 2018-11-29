@@ -10,6 +10,10 @@ import (
 )
 
 func TestP2P(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	runP2P := func(t *testing.T, options ...Option) {
 		ctx := context.Background()
 		n := 10
