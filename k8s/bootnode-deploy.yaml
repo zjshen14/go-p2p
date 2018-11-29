@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p2p-bootnode
+  labels:
+    app: p2p-node
+    role: bootnode
+spec:
+  serviceName: "p2p-boostnode"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: p2p-node
+      role: bootnode
+  template:
+    metadata:
+      labels:
+        app: p2p-node
+        role: bootnode
+    spec:
+      containers:
+        - name: bootnode
+          image: zjshen14/go-p2p:latest
+          imagePullPolicy: Always
+          command: ["/go/src/github.com/zjshen14/go-p2p/bin/main"]
+          args: ["-seed=0"]
+          ports:
+          - containerPort: 30001
+            protocol: TCP
+          - name: metrics
+            containerPort: 8080
+            protocol: TCP
+          env:
+            - name: P2P_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
