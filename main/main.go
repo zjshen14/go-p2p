@@ -2,11 +2,19 @@ package main
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/binary"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/libp2p/go-libp2p-peer"
+
+	"github.com/libp2p/go-libp2p-crypto"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -16,7 +24,6 @@ import (
 var (
 	ip            string
 	port          int
-	seed          int64
 	secureIO      bool
 	gossip        bool
 	bootstrapAddr string
@@ -44,7 +51,6 @@ var (
 func init() {
 	flag.StringVar(&ip, "ip", "127.0.0.1", "IP address")
 	flag.IntVar(&port, "port", 30001, "Port number")
-	flag.Int64Var(&seed, "seed", 0, "Seed to generate key")
 	flag.BoolVar(&secureIO, "secureio", false, "Use secure I/O")
 	flag.BoolVar(&gossip, "gossip", false, "Use Gossip protocol")
 	flag.StringVar(&bootstrapAddr, "bootstrapaddr", "", "Bootstrap node address")
@@ -68,11 +74,13 @@ func main() {
 		port = portIntFromEvn
 
 	}
+
 	options := []p2p.Option{
 		p2p.IP(ip),
 		p2p.Port(port),
-		p2p.Seed(seed),
+		p2p.Seed(generateSeed(fmt.Sprintf("%s:%d", ip, port))),
 	}
+
 	if secureIO {
 		options = append(options, p2p.SecureIO())
 	}
@@ -104,7 +112,25 @@ func main() {
 	}
 
 	if bootstrapAddr != "" {
-		if err := host.Connect(bootstrapAddr); err != nil {
+		bootstrapSeed := generateSeed(bootstrapAddr)
+		r := rand.New(rand.NewSource(bootstrapSeed))
+		_, bootstrapPK, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, r)
+		if err != nil {
+			p2p.Logger.Panic().Err(err).Msg("Error when generating bootstrap node key pair")
+		}
+		bootstrapID, err := peer.IDFromPublicKey(bootstrapPK)
+		if err != nil {
+			p2p.Logger.Panic().Err(err).Msg("Error when generating bootstrap node ID")
+		}
+		bootstrapAddrParts := strings.Split(bootstrapAddr, ":")
+		fullAddr := fmt.Sprintf(
+			"/ip4/%s/tcp/%s/ipfs/%s",
+			bootstrapAddrParts[0],
+			bootstrapAddrParts[1],
+			bootstrapID.Pretty(),
+		)
+
+		if err := host.Connect(fullAddr); err != nil {
 			p2p.Logger.Panic().Err(err).Msg("Error when connecting to the bootstrap node")
 		}
 		if err := host.JoinOverlay(); err != nil {
@@ -126,4 +152,12 @@ func main() {
 			}
 		}
 	}
+}
+
+func generateSeed(addr string) int64 {
+	hash := sha1.Sum([]byte(addr))
+	seedBytes := hash[12:]
+	seedBytes[0] = 0
+	return int64(binary.BigEndian.Uint64(seedBytes))
+
 }

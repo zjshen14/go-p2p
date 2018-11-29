@@ -64,6 +64,3 @@ func TestP2P(t *testing.T) {
 		runP2P(t, Gossip())
 	})
 }
-
-// counter
-// inject workload
