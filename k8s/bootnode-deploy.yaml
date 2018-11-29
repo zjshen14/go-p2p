@@ -6,7 +6,6 @@ metadata:
     app: p2p-node
     role: bootnode
 spec:
-  serviceName: "p2p-boostnode"
   replicas: 1
   selector:
     matchLabels:
@@ -20,7 +19,7 @@ spec:
     spec:
       containers:
         - name: bootnode
-          image: zjshen14/go-p2p:latest
+          image: zjshen/go-p2p:latest
           imagePullPolicy: Always
           command: ["/go/src/github.com/zjshen14/go-p2p/bin/main"]
           args: ["-secureio=true"]
