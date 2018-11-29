@@ -110,7 +110,7 @@ func main() {
 		} else {
 			audit[id] = 1
 		}
-		if audit[id]%10 == 0 {
+		if audit[id]%100 == 0 {
 			p2p.Logger.Info().Str("id", id).Int("num", audit[id]).Msg("Received messages")
 		}
 		receiveCounter.WithLabelValues(id, host.Identity()).Inc()
