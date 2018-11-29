@@ -7,16 +7,16 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/libp2p/go-libp2p-peer"
-
 	"github.com/libp2p/go-libp2p-crypto"
-
+	"github.com/libp2p/go-libp2p-peer"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/zjshen14/go-p2p"
 )
@@ -60,6 +60,14 @@ func init() {
 
 	prometheus.MustRegister(receiveCounter)
 	prometheus.MustRegister(sendCounter)
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	go func() {
+		if err := http.ListenAndServe(":8080", mux); err != nil {
+			p2p.Logger.Error().Err(err).Msg("Error when serving performance profiling data")
+		}
+	}()
 }
 
 func main() {
