@@ -24,7 +24,22 @@ var (
 	slowStart     int64
 )
 
-var ()
+var (
+	receiveCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "broadcast_message_receive_audit",
+			Help: "Broadcast message_receive_audit",
+		},
+		[]string{"from", "to"},
+	)
+	sendCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "broadcast_message_send_audit",
+			Help: "Broadcast message_send_audit",
+		},
+		[]string{"from"},
+	)
+)
 
 func init() {
 	flag.StringVar(&ip, "ip", "127.0.0.1", "IP address")
@@ -37,7 +52,8 @@ func init() {
 	flag.Int64Var(&slowStart, "slowstart", 10, "Wait some time (in sec) before sending a message")
 	flag.Parse()
 
-	prometheus.MustRegister()
+	prometheus.MustRegister(receiveCounter)
+	prometheus.MustRegister(sendCounter)
 }
 
 func main() {
@@ -81,6 +97,7 @@ func main() {
 		if audit[id]%10 == 0 {
 			p2p.Logger.Info().Str("id", id).Int("num", audit[id]).Msg("Received messages")
 		}
+		receiveCounter.WithLabelValues(id, host.Identity()).Inc()
 		return nil
 	}); err != nil {
 		p2p.Logger.Panic().Err(err).Msg("Error when adding pubsub")
@@ -103,7 +120,9 @@ func main() {
 				"measurement",
 				[]byte(fmt.Sprintf("%s", host.Identity())),
 			); err != nil {
-
+				p2p.Logger.Error().Err(err).Msg("Error when broadcasting a message")
+			} else {
+				sendCounter.WithLabelValues(host.Identity()).Inc()
 			}
 		}
 	}
