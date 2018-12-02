@@ -19,7 +19,7 @@ spec:
           image: zjshen/go-p2p:latest
           imagePullPolicy: Always
           command: ["/go/src/github.com/zjshen14/go-p2p/bin/main"]
-          args: ["-secureio=true", "-bootstrapaddr=10.44.19.7:30001"]
+          args: ["-secureio=true", "-gossip=true", "-bootstrapaddr=<bootnode_ip>:30001"]
           ports:
           - containerPort: 30001
             protocol: TCP
