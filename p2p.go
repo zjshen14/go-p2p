@@ -99,7 +99,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	sk, _, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, cfg.Port))
+	sk, pk, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, cfg.Port))
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +113,20 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	host, err := libp2p.New(ctx, opts...)
 	if err != nil {
 		return nil, err
+	}
+	// Hack to walk around the libp2p issue of insecure I/O
+	if !cfg.SecureIO {
+		pid, err := peer.IDFromPublicKey(pk)
+		if err != nil {
+			return nil, err
+		}
+		if err := host.Peerstore().AddPrivKey(pid, sk); err != nil {
+			return nil, err
+		}
+		if err := host.Peerstore().AddPubKey(pid, pk); err != nil {
+			return nil, err
+		}
+
 	}
 	kad, err := dht.New(ctx, host)
 	if err != nil {
@@ -135,6 +149,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	Logger.Info().
 		Str("address", myHost.Address()).
 		Str("multiAddress", myHost.MultiAddress()).
+		Bool("secureIO", myHost.cfg.SecureIO).
 		Msg("P2P host started")
 	return &myHost, nil
 }
