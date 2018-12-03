@@ -2,14 +2,19 @@ package p2p
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"strconv"
+	"strings"
 
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-crypto"
 	"github.com/libp2p/go-libp2p-host"
 	"github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/libp2p/go-libp2p-peer"
 	"github.com/libp2p/go-libp2p-peerstore"
 	"github.com/libp2p/go-libp2p-pubsub"
 	"github.com/multiformats/go-multiaddr"
@@ -21,18 +26,16 @@ type HandleBroadcast func(data []byte) error
 
 // Config enumerates the configs required by a host
 type Config struct {
-	IP       string
+	HostName string
 	Port     int
-	Seed     int64
 	SecureIO bool
 	Gossip   bool
 }
 
 // DefaultConfig is a set of default configs
 var DefaultConfig = Config{
-	IP:       "127.0.0.1",
+	HostName: "127.0.0.1",
 	Port:     30001,
-	Seed:     0,
 	SecureIO: false,
 	Gossip:   false,
 }
@@ -40,10 +43,10 @@ var DefaultConfig = Config{
 // Option defines the option function to modify the config for a host
 type Option func(cfg *Config) error
 
-// IP is the option to override the IP address
-func IP(ip string) Option {
+// HostName is the option to override the host name or IP address
+func HostName(hostName string) Option {
 	return func(cfg *Config) error {
-		cfg.IP = ip
+		cfg.HostName = hostName
 		return nil
 	}
 }
@@ -52,14 +55,6 @@ func IP(ip string) Option {
 func Port(port int) Option {
 	return func(cfg *Config) error {
 		cfg.Port = port
-		return nil
-	}
-}
-
-// Seed is the option to set the seed for generating key
-func Seed(seed int64) Option {
-	return func(cfg *Config) error {
-		cfg.Seed = seed
 		return nil
 	}
 }
@@ -83,6 +78,7 @@ func Gossip() Option {
 // Host is the main struct that represents a host that communicating with the rest of the P2P networks
 type Host struct {
 	host      host.Host
+	cfg       Config
 	ctx       context.Context
 	kad       *dht.IpfsDHT
 	newPubSub func(ctx context.Context, h host.Host, opts ...pubsub.Option) (*pubsub.PubSub, error)
@@ -99,22 +95,21 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 			return nil, err
 		}
 	}
-
-	r := rand.New(rand.NewSource(cfg.Seed))
-	sk, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, r)
+	ip, err := EnsureIPv4(cfg.HostName)
 	if err != nil {
 		return nil, err
 	}
-
+	sk, _, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, cfg.Port))
+	if err != nil {
+		return nil, err
+	}
 	opts := []libp2p.Option{
-		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/%s/tcp/%d", cfg.IP, cfg.Port)),
+		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/%s/tcp/%d", ip, cfg.Port)),
 		libp2p.Identity(sk),
 	}
-
 	if !cfg.SecureIO {
 		opts = append(opts, libp2p.NoSecurity)
 	}
-
 	host, err := libp2p.New(ctx, opts...)
 	if err != nil {
 		return nil, err
@@ -129,6 +124,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	}
 	myHost := Host{
 		host:      host,
+		cfg:       cfg,
 		ctx:       ctx,
 		kad:       kad,
 		newPubSub: newPubSub,
@@ -136,13 +132,38 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 		subs:      make(map[string]*pubsub.Subscription),
 		close:     make(chan interface{}),
 	}
-	Logger.Info().Str("address", myHost.Address()).Msg("P2P host started")
+	Logger.Info().
+		Str("address", myHost.Address()).
+		Str("multiAddress", myHost.MultiAddress()).
+		Msg("P2P host started")
 	return &myHost, nil
 }
 
 // Connect connects a peer given the address string
-func (h *Host) Connect(address string) error {
-	ma, err := multiaddr.NewMultiaddr(address)
+func (h *Host) Connect(addr string) error {
+	parts := strings.Split(addr, ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("%s is not a valid address", addr)
+	}
+	// TODO: doesn't support the case of multi IPs binding to the same host name
+	ip, err := EnsureIPv4(parts[0])
+	if err != nil {
+		return err
+	}
+	port, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return err
+	}
+	_, pk, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, port))
+	if err != nil {
+		return err
+	}
+	id, err := peer.IDFromPublicKey(pk)
+	if err != nil {
+		return err
+	}
+	maStr := fmt.Sprintf("/ip4/%s/tcp/%d/ipfs/%s", ip, port, id.Pretty())
+	ma, err := multiaddr.NewMultiaddr(maStr)
 	if err != nil {
 		return err
 	}
@@ -150,7 +171,14 @@ func (h *Host) Connect(address string) error {
 	if err != nil {
 		return err
 	}
-	return h.host.Connect(h.ctx, *target)
+	if err := h.host.Connect(h.ctx, *target); err != nil {
+		return err
+	}
+	Logger.Debug().
+		Str("address", fmt.Sprintf("%s:%d", ip, port)).
+		Str("multiAddress", ma.String()).
+		Msg("P2P peer connected")
+	return nil
 }
 
 // JoinOverlay triggers the host to join the DHT overlay
@@ -226,8 +254,11 @@ func (h *Host) IdentityHash() (string, error) {
 	return cid.String(), nil
 }
 
-// Address returns the address
-func (h *Host) Address() string {
+// Address return the canonical network address
+func (h *Host) Address() string { return fmt.Sprintf("%s:%d", h.cfg.HostName, h.cfg.Port) }
+
+// MultiAddress returns the multi address
+func (h *Host) MultiAddress() string {
 	addr := h.host.Addrs()[0]
 	if addr.String() == "/p2p-circuit" {
 		addr = h.host.Addrs()[1]
@@ -249,4 +280,14 @@ func (h *Host) Close() error {
 		return err
 	}
 	return nil
+}
+
+// generateKeyPair generates the public key and private key by network address
+func generateKeyPair(addr string) (crypto.PrivKey, crypto.PubKey, error) {
+	hash := sha1.Sum([]byte(addr))
+	seedBytes := hash[12:]
+	seedBytes[0] = 0
+	seed := int64(binary.BigEndian.Uint64(seedBytes))
+	r := rand.New(rand.NewSource(seed))
+	return crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, r)
 }

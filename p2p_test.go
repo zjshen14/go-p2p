@@ -21,7 +21,6 @@ func TestP2P(t *testing.T) {
 		for i := 0; i < n; i++ {
 			opts := []Option{
 				Port(30000 + i),
-				Seed(int64(i)),
 				SecureIO(),
 			}
 			opts = append(opts, options...)
