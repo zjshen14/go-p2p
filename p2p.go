@@ -186,6 +186,10 @@ func (h *Host) Connect(addr string) error {
 	if err != nil {
 		return err
 	}
+	Logger.Info().
+		Str("address", fmt.Sprintf("%s:%d", ip, port)).
+		Str("multiAddress", ma.String()).
+		Msg("Connecting P2P peer")
 	if err := h.host.Connect(h.ctx, *target); err != nil {
 		return err
 	}
