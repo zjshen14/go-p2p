@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -97,8 +98,12 @@ func main() {
 	}
 
 	audit := make(map[string]int, 0)
+	var mutex sync.Mutex
 
 	handleMsg := func(data []byte) error {
+		mutex.Lock()
+		defer mutex.Unlock()
+
 		id := string(data)
 		if _, ok := audit[id]; ok {
 			audit[id]++
