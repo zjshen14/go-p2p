@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha1"
 	"encoding/binary"
@@ -14,8 +15,10 @@ import (
 	"github.com/libp2p/go-libp2p-crypto"
 	"github.com/libp2p/go-libp2p-host"
 	"github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/libp2p/go-libp2p-net"
 	"github.com/libp2p/go-libp2p-peer"
 	"github.com/libp2p/go-libp2p-peerstore"
+	"github.com/libp2p/go-libp2p-protocol"
 	"github.com/libp2p/go-libp2p-pubsub"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
@@ -23,6 +26,9 @@ import (
 
 // HandleBroadcast defines the callback function triggered when a broadcast message reaches a host
 type HandleBroadcast func(data []byte) error
+
+// HandleUnicast defines the callback function triggered when a unicast message reaches a host
+type HandleUnicast func(data []byte) error
 
 // Config enumerates the configs required by a host
 type Config struct {
@@ -80,7 +86,9 @@ type Host struct {
 	host      host.Host
 	cfg       Config
 	ctx       context.Context
+	topics    map[string]interface{}
 	kad       *dht.IpfsDHT
+	kadKey    cid.Cid
 	newPubSub func(ctx context.Context, h host.Host, opts ...pubsub.Option) (*pubsub.PubSub, error)
 	pubs      map[string]*pubsub.PubSub
 	subs      map[string]*pubsub.Subscription
@@ -136,11 +144,18 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	if cfg.Gossip {
 		newPubSub = pubsub.NewGossipSub
 	}
+	v1b := cid.V1Builder{Codec: cid.Raw, MhType: multihash.SHA2_256}
+	cid, err := v1b.Sum([]byte(host.ID().Pretty()))
+	if err != nil {
+		return nil, err
+	}
 	myHost := Host{
 		host:      host,
 		cfg:       cfg,
 		ctx:       ctx,
+		topics:    make(map[string]interface{}),
 		kad:       kad,
+		kadKey:    cid,
 		newPubSub: newPubSub,
 		pubs:      make(map[string]*pubsub.PubSub),
 		subs:      make(map[string]*pubsub.Subscription),
@@ -156,29 +171,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 
 // Connect connects a peer given the address string
 func (h *Host) Connect(addr string) error {
-	parts := strings.Split(addr, ":")
-	if len(parts) != 2 {
-		return fmt.Errorf("%s is not a valid address", addr)
-	}
-	// TODO: doesn't support the case of multi IPs binding to the same host name
-	ip, err := EnsureIPv4(parts[0])
-	if err != nil {
-		return err
-	}
-	port, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return err
-	}
-	_, pk, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, port))
-	if err != nil {
-		return err
-	}
-	id, err := peer.IDFromPublicKey(pk)
-	if err != nil {
-		return err
-	}
-	maStr := fmt.Sprintf("/ip4/%s/tcp/%d/ipfs/%s", ip, port, id.Pretty())
-	ma, err := multiaddr.NewMultiaddr(maStr)
+	ma, err := addrToMultiAddr(addr)
 	if err != nil {
 		return err
 	}
@@ -186,15 +179,11 @@ func (h *Host) Connect(addr string) error {
 	if err != nil {
 		return err
 	}
-	Logger.Info().
-		Str("address", fmt.Sprintf("%s:%d", ip, port)).
-		Str("multiAddress", ma.String()).
-		Msg("Connecting P2P peer")
 	if err := h.host.Connect(h.ctx, *target); err != nil {
 		return err
 	}
 	Logger.Debug().
-		Str("address", fmt.Sprintf("%s:%d", ip, port)).
+		Str("address", addr).
 		Str("multiAddress", ma.String()).
 		Msg("P2P peer connected")
 	return nil
@@ -202,20 +191,36 @@ func (h *Host) Connect(addr string) error {
 
 // JoinOverlay triggers the host to join the DHT overlay
 func (h *Host) JoinOverlay() error {
-	v1b := cid.V1Builder{Codec: cid.Raw, MhType: multihash.SHA2_256}
-	cid, err := v1b.Sum([]byte(h.Identity()))
-	if err != nil {
-		return err
+	if err := h.kad.Provide(h.ctx, h.kadKey, true); err == nil {
+		return nil
 	}
-	if err := h.kad.Provide(h.ctx, cid, true); err != nil {
-		return h.kad.Bootstrap(h.ctx)
+	return h.kad.Bootstrap(h.ctx)
+}
+
+// AddUnicastPubSub adds a unicast topic that the host will pay attention to
+func (h *Host) AddUnicastPubSub(topic string, callback HandleUnicast) error {
+	if _, ok := h.topics[topic]; ok {
+		return nil
 	}
+	h.host.SetStreamHandler(protocol.ID(topic), func(stream net.Stream) {
+		buf := bufio.NewReader(stream)
+		data, err := buf.ReadBytes('\n')
+		if err != nil {
+			Logger.Error().Err(err).Msg("Error when subscribing a unicast message")
+			return
+		}
+		data = data[:len(data)-1]
+		if err := callback(data); err != nil {
+			Logger.Error().Err(err).Msg("Error when processing a unicast message")
+		}
+	})
+	h.topics[topic] = nil
 	return nil
 }
 
-// AddPubSub adds a topic that the host will pay attention to. This need to be called before using Connect/JoinOverlay.
-// Otherwise, pubsub may not be aware of the existing overlay topology
-func (h *Host) AddPubSub(topic string, callback HandleBroadcast) error {
+// AddBroadcastPubSub adds a broadcast topic that the host will pay attention to. This need to be called before using
+// Connect/JoinOverlay. Otherwise, pubsub may not be aware of the existing overlay topology
+func (h *Host) AddBroadcastPubSub(topic string, callback HandleBroadcast) error {
 	if _, ok := h.pubs[topic]; ok {
 		return nil
 	}
@@ -258,20 +263,42 @@ func (h *Host) Broadcast(topic string, data []byte) error {
 	return pub.Publish(topic, data)
 }
 
+// Unicast sends a message to a peer on the given address
+func (h *Host) Unicast(addr string, topic string, data []byte) (err error) {
+	ma, err := addrToMultiAddr(addr)
+	if err != nil {
+		return err
+	}
+	peerIDStr, err := ma.ValueForProtocol(multiaddr.P_IPFS)
+	if err != nil {
+		return err
+	}
+	peerID, err := peer.IDB58Decode(peerIDStr)
+	if err != nil {
+		return err
+	}
+	if len(h.host.Peerstore().Addrs(peerID)) == 0 {
+		h.host.Peerstore().AddAddr(peerID, ma, peerstore.TempAddrTTL)
+	}
+	stream, err := h.host.NewStream(h.ctx, peerID, protocol.ID(topic))
+	if err != nil {
+		return err
+	}
+	defer func() { err = stream.Close() }()
+	data = append(data, '\n')
+	if _, err = stream.Write(data); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Identity returns the identity string
 func (h *Host) Identity() string {
 	return h.host.ID().Pretty()
 }
 
 // IdentityHash returns the identity hash string
-func (h *Host) IdentityHash() (string, error) {
-	v1b := cid.V1Builder{Codec: cid.Raw, MhType: multihash.SHA2_256}
-	cid, err := v1b.Sum([]byte(h.Identity()))
-	if err != nil {
-		return "", err
-	}
-	return cid.String(), nil
-}
+func (h *Host) IdentityHash() string { return h.kadKey.String() }
 
 // Address return the canonical network address
 func (h *Host) Address() string { return fmt.Sprintf("%s:%d", h.cfg.HostName, h.cfg.Port) }
@@ -284,6 +311,34 @@ func (h *Host) MultiAddress() string {
 	}
 	hostAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ipfs/%s", h.Identity()))
 	return addr.Encapsulate(hostAddr).String()
+}
+
+// Neighbors returns the closest peer addresses
+func (h *Host) Neighbors() ([]string, error) {
+	peers, err := h.kad.GetClosestPeers(h.ctx, h.kadKey.String())
+	if err != nil {
+		return nil, err
+	}
+	neighbors := make([]string, 0)
+	for peer := range peers {
+		for _, ma := range h.kad.FindLocal(peer).Addrs {
+			ip, err := ma.ValueForProtocol(multiaddr.P_IP4)
+			if ip == "" || err != nil {
+				continue
+			}
+			portStr, err := ma.ValueForProtocol(multiaddr.P_TCP)
+			if err != nil {
+				continue
+			}
+			port, err := strconv.Atoi(portStr)
+			if err != nil {
+				continue
+			}
+			neighbors = append(neighbors, fmt.Sprintf("%s:%d", ip, port))
+			break
+		}
+	}
+	return neighbors, nil
 }
 
 // Close closes the host
@@ -309,4 +364,30 @@ func generateKeyPair(addr string) (crypto.PrivKey, crypto.PubKey, error) {
 	seed := int64(binary.BigEndian.Uint64(seedBytes))
 	r := rand.New(rand.NewSource(seed))
 	return crypto.GenerateKeyPairWithReader(crypto.Ed25519, 2048, r)
+}
+
+func addrToMultiAddr(addr string) (multiaddr.Multiaddr, error) {
+	parts := strings.Split(addr, ":")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("%s is not a valid address", addr)
+	}
+	// TODO: doesn't support the case of multi IPs binding to the same host name
+	ip, err := EnsureIPv4(parts[0])
+	if err != nil {
+		return nil, err
+	}
+	port, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return nil, err
+	}
+	_, pk, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, port))
+	if err != nil {
+		return nil, err
+	}
+	id, err := peer.IDFromPublicKey(pk)
+	if err != nil {
+		return nil, err
+	}
+	maStr := fmt.Sprintf("/ip4/%s/tcp/%d/ipfs/%s", ip, port, id.Pretty())
+	return multiaddr.NewMultiaddr(maStr)
 }

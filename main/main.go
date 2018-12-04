@@ -23,6 +23,7 @@ var (
 	bootstrapAddr string
 	frequency     int64
 	slowStart     int64
+	broadcast     bool
 )
 
 var (
@@ -50,6 +51,7 @@ func init() {
 	flag.StringVar(&bootstrapAddr, "bootstrapaddr", "", "Bootstrap node address")
 	flag.Int64Var(&frequency, "frequency", 1000, "How frequent (in ms) to send a message")
 	flag.Int64Var(&slowStart, "slowstart", 10, "Wait some time (in sec) before sending a message")
+	flag.BoolVar(&broadcast, "broadcast", true, "Broadcast or unicast the messages only to the neighbors")
 	flag.Parse()
 
 	prometheus.MustRegister(receiveCounter)
@@ -96,7 +98,7 @@ func main() {
 
 	audit := make(map[string]int, 0)
 
-	if err := host.AddPubSub("measurement", func(data []byte) error {
+	handleMsg := func(data []byte) error {
 		id := string(data)
 		if _, ok := audit[id]; ok {
 			audit[id]++
@@ -106,10 +108,14 @@ func main() {
 		if audit[id]%100 == 0 {
 			p2p.Logger.Info().Str("id", id).Int("num", audit[id]).Msg("Received messages")
 		}
-		receiveCounter.WithLabelValues(id, host.Identity()).Inc()
+		receiveCounter.WithLabelValues(id, host.Address()).Inc()
 		return nil
-	}); err != nil {
-		p2p.Logger.Panic().Err(err).Msg("Error when adding pubsub")
+	}
+	if err := host.AddBroadcastPubSub("measurement", handleMsg); err != nil {
+		p2p.Logger.Panic().Err(err).Msg("Error when adding broadcast pubsub")
+	}
+	if err := host.AddUnicastPubSub("measurement", handleMsg); err != nil {
+		p2p.Logger.Panic().Err(err).Msg("Error when adding unicast pubsub")
 	}
 
 	if bootstrapAddr != "" {
@@ -125,13 +131,22 @@ func main() {
 	for {
 		select {
 		case <-tick:
-			if err := host.Broadcast(
-				"measurement",
-				[]byte(fmt.Sprintf("%s", host.Identity())),
-			); err != nil {
+			var err error
+			if broadcast {
+				err = host.Broadcast("measurement", []byte(fmt.Sprintf("%s", host.Address())))
+			} else {
+				neighbors, err := host.Neighbors()
+				if err != nil {
+					p2p.Logger.Error().Err(err).Msg("Error when getting neighbors")
+				}
+				for _, neighbor := range neighbors {
+					host.Unicast(neighbor, "measurement", []byte(fmt.Sprintf("%s", host.Address())))
+				}
+			}
+			if err != nil {
 				p2p.Logger.Error().Err(err).Msg("Error when broadcasting a message")
 			} else {
-				sendCounter.WithLabelValues(host.Identity()).Inc()
+				sendCounter.WithLabelValues(host.Address()).Inc()
 			}
 		}
 	}
