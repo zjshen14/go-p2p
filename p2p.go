@@ -203,6 +203,11 @@ func (h *Host) AddUnicastPubSub(topic string, callback HandleUnicast) error {
 		return nil
 	}
 	h.host.SetStreamHandler(protocol.ID(topic), func(stream net.Stream) {
+		defer func() {
+			if err := stream.Close(); err != nil {
+				Logger.Error().Err(err).Msg("Error when closing a unicast stream")
+			}
+		}()
 		buf := bufio.NewReader(stream)
 		data, err := buf.ReadBytes('\n')
 		if err != nil {
