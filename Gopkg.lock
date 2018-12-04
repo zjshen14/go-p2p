@@ -923,14 +923,17 @@
     "github.com/libp2p/go-libp2p-crypto",
     "github.com/libp2p/go-libp2p-host",
     "github.com/libp2p/go-libp2p-kad-dht",
+    "github.com/libp2p/go-libp2p-net",
     "github.com/libp2p/go-libp2p-peer",
     "github.com/libp2p/go-libp2p-peerstore",
+    "github.com/libp2p/go-libp2p-protocol",
     "github.com/libp2p/go-libp2p-pubsub",
     "github.com/multiformats/go-multiaddr",
     "github.com/multiformats/go-multihash",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/rs/zerolog",
+    "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
   ]
   solver-name = "gps-cdcl"

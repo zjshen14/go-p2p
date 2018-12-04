@@ -161,7 +161,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 		subs:      make(map[string]*pubsub.Subscription),
 		close:     make(chan interface{}),
 	}
-	Logger.Info().
+	logger.Info().
 		Str("address", myHost.Address()).
 		Str("multiAddress", myHost.MultiAddress()).
 		Bool("secureIO", myHost.cfg.SecureIO).
@@ -182,7 +182,7 @@ func (h *Host) Connect(addr string) error {
 	if err := h.host.Connect(h.ctx, *target); err != nil {
 		return err
 	}
-	Logger.Debug().
+	logger.Debug().
 		Str("address", addr).
 		Str("multiAddress", ma.String()).
 		Msg("P2P peer connected")
@@ -205,18 +205,18 @@ func (h *Host) AddUnicastPubSub(topic string, callback HandleUnicast) error {
 	h.host.SetStreamHandler(protocol.ID(topic), func(stream net.Stream) {
 		defer func() {
 			if err := stream.Close(); err != nil {
-				Logger.Error().Err(err).Msg("Error when closing a unicast stream")
+				logger.Error().Err(err).Msg("Error when closing a unicast stream")
 			}
 		}()
 		buf := bufio.NewReader(stream)
 		data, err := buf.ReadBytes('\n')
 		if err != nil {
-			Logger.Error().Err(err).Msg("Error when subscribing a unicast message")
+			logger.Error().Err(err).Msg("Error when subscribing a unicast message")
 			return
 		}
 		data = data[:len(data)-1]
 		if err := callback(data); err != nil {
-			Logger.Error().Err(err).Msg("Error when processing a unicast message")
+			logger.Error().Err(err).Msg("Error when processing a unicast message")
 		}
 	})
 	h.topics[topic] = nil
@@ -247,11 +247,11 @@ func (h *Host) AddBroadcastPubSub(topic string, callback HandleBroadcast) error 
 			default:
 				msg, err := sub.Next(h.ctx)
 				if err != nil {
-					Logger.Error().Err(err).Msg("Error when subscribing a broadcast message")
+					logger.Error().Err(err).Msg("Error when subscribing a broadcast message")
 					continue
 				}
 				if err := callback(msg.Data); err != nil {
-					Logger.Error().Err(err).Msg("Error when processing a broadcast message")
+					logger.Error().Err(err).Msg("Error when processing a broadcast message")
 				}
 			}
 		}

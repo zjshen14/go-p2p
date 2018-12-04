@@ -6,5 +6,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Logger is the logger instance
-var Logger = zerolog.New(os.Stderr).Level(zerolog.InfoLevel).With().Timestamp().Logger()
+// logger is the logger instance
+var logger = zerolog.New(os.Stderr).Level(zerolog.InfoLevel).With().Timestamp().Logger()
+
+// Logger returns the logger
+func Logger() *zerolog.Logger { return &logger }
+
+// SetLogger sets the logger
+func SetLogger(l *zerolog.Logger) {
+	logger = *l
+}
