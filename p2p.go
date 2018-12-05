@@ -1,11 +1,11 @@
 package p2p
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -221,13 +221,11 @@ func (h *Host) AddUnicastPubSub(topic string, callback HandleUnicast) error {
 				logger.Error().Err(err).Msg("Error when closing a unicast stream")
 			}
 		}()
-		buf := bufio.NewReader(stream)
-		data, err := buf.ReadBytes('\n')
+		data, err := ioutil.ReadAll(stream)
 		if err != nil {
 			logger.Error().Err(err).Msg("Error when subscribing a unicast message")
 			return
 		}
-		data = data[:len(data)-1]
 		if err := callback(data); err != nil {
 			logger.Error().Err(err).Msg("Error when processing a unicast message")
 		}
@@ -303,7 +301,6 @@ func (h *Host) Unicast(addr string, topic string, data []byte) (err error) {
 		return err
 	}
 	defer func() { err = stream.Close() }()
-	data = append(data, '\n')
 	if _, err = stream.Write(data); err != nil {
 		return err
 	}
