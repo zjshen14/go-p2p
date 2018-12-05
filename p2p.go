@@ -149,6 +149,19 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Update actual port if it's set to 0
+	if cfg.Port == 0 {
+		addr := host.Addrs()[0]
+		if addr.String() == "/p2p-circuit" {
+			addr = host.Addrs()[1]
+		}
+		portStr, err := addr.ValueForProtocol(multiaddr.P_TCP)
+		if err != nil {
+			return nil, err
+		}
+		port, err := strconv.Atoi(portStr)
+		cfg.Port = port
+	}
 	myHost := Host{
 		host:      host,
 		cfg:       cfg,
