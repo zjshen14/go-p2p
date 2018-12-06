@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p"
@@ -20,6 +21,8 @@ import (
 	"github.com/libp2p/go-libp2p-peerstore"
 	"github.com/libp2p/go-libp2p-protocol"
 	"github.com/libp2p/go-libp2p-pubsub"
+	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
+	tcp "github.com/libp2p/go-tcp-transport"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 )
@@ -114,6 +117,9 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/%s/tcp/%d", ip, cfg.Port)),
 		libp2p.Identity(sk),
+		libp2p.Transport(func(upgrader *tptu.Upgrader) *tcp.TcpTransport {
+			return &tcp.TcpTransport{Upgrader: upgrader, ConnectTimeout: 1 * time.Minute}
+		}),
 	}
 	if !cfg.SecureIO {
 		opts = append(opts, libp2p.NoSecurity)
