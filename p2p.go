@@ -21,10 +21,11 @@ import (
 	"github.com/libp2p/go-libp2p-peerstore"
 	"github.com/libp2p/go-libp2p-protocol"
 	"github.com/libp2p/go-libp2p-pubsub"
-	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
-	tcp "github.com/libp2p/go-tcp-transport"
+	"github.com/libp2p/go-libp2p-transport-upgrader"
+	"github.com/libp2p/go-tcp-transport"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
+	"github.com/whyrusleeping/go-smux-yamux"
 )
 
 // HandleBroadcast defines the callback function triggered when a broadcast message reaches a host
@@ -35,18 +36,20 @@ type HandleUnicast func(data []byte) error
 
 // Config enumerates the configs required by a host
 type Config struct {
-	HostName string
-	Port     int
-	SecureIO bool
-	Gossip   bool
+	HostName       string
+	Port           int
+	SecureIO       bool
+	Gossip         bool
+	ConnectTimeout time.Duration
 }
 
 // DefaultConfig is a set of default configs
 var DefaultConfig = Config{
-	HostName: "127.0.0.1",
-	Port:     30001,
-	SecureIO: false,
-	Gossip:   false,
+	HostName:       "127.0.0.1",
+	Port:           30001,
+	SecureIO:       false,
+	Gossip:         false,
+	ConnectTimeout: time.Minute,
 }
 
 // Option defines the option function to modify the config for a host
@@ -84,6 +87,14 @@ func Gossip() Option {
 	}
 }
 
+// ConnectTimeout is the option to override the connect timeout
+func ConnectTimeout(timout time.Duration) Option {
+	return func(cfg *Config) error {
+		cfg.Gossip = true
+		return nil
+	}
+}
+
 // Host is the main struct that represents a host that communicating with the rest of the P2P networks
 type Host struct {
 	host      host.Host
@@ -110,16 +121,18 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	sk, pk, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, cfg.Port))
+	sk, _, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, cfg.Port))
 	if err != nil {
 		return nil, err
 	}
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/%s/tcp/%d", ip, cfg.Port)),
 		libp2p.Identity(sk),
-		libp2p.Transport(func(upgrader *tptu.Upgrader) *tcp.TcpTransport {
-			return &tcp.TcpTransport{Upgrader: upgrader, ConnectTimeout: 1 * time.Minute}
+		libp2p.Transport(func(upgrader *stream.Upgrader) *tcp.TcpTransport {
+			return &tcp.TcpTransport{Upgrader: upgrader, ConnectTimeout: cfg.ConnectTimeout}
 		}),
+		libp2p.Muxer("/yamux/2.0.0", sm_yamux.DefaultTransport),
+		libp2p.DisableRelay(),
 	}
 	if !cfg.SecureIO {
 		opts = append(opts, libp2p.NoSecurity)
@@ -127,20 +140,6 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	host, err := libp2p.New(ctx, opts...)
 	if err != nil {
 		return nil, err
-	}
-	// Hack to walk around the libp2p issue of insecure I/O
-	if !cfg.SecureIO {
-		pid, err := peer.IDFromPublicKey(pk)
-		if err != nil {
-			return nil, err
-		}
-		if err := host.Peerstore().AddPrivKey(pid, sk); err != nil {
-			return nil, err
-		}
-		if err := host.Peerstore().AddPubKey(pid, pk); err != nil {
-			return nil, err
-		}
-
 	}
 	kad, err := dht.New(ctx, host)
 	if err != nil {
@@ -158,9 +157,6 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	// Update actual port if it's set to 0
 	if cfg.Port == 0 {
 		addr := host.Addrs()[0]
-		if addr.String() == "/p2p-circuit" {
-			addr = host.Addrs()[1]
-		}
 		portStr, err := addr.ValueForProtocol(multiaddr.P_TCP)
 		if err != nil {
 			return nil, err
@@ -184,6 +180,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 		Str("address", myHost.Address()).
 		Str("multiAddress", myHost.MultiAddress()).
 		Bool("secureIO", myHost.cfg.SecureIO).
+		Bool("gossip", myHost.cfg.Gossip).
 		Msg("P2P host started")
 	return &myHost, nil
 }
@@ -327,9 +324,6 @@ func (h *Host) Address() string { return fmt.Sprintf("%s:%d", h.cfg.HostName, h.
 // MultiAddress returns the multi address
 func (h *Host) MultiAddress() string {
 	addr := h.host.Addrs()[0]
-	if addr.String() == "/p2p-circuit" {
-		addr = h.host.Addrs()[1]
-	}
 	hostAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ipfs/%s", h.Identity()))
 	return addr.Encapsulate(hostAddr).String()
 }

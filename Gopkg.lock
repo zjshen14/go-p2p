@@ -928,6 +928,8 @@
     "github.com/libp2p/go-libp2p-peerstore",
     "github.com/libp2p/go-libp2p-protocol",
     "github.com/libp2p/go-libp2p-pubsub",
+    "github.com/libp2p/go-libp2p-transport-upgrader",
+    "github.com/libp2p/go-tcp-transport",
     "github.com/multiformats/go-multiaddr",
     "github.com/multiformats/go-multihash",
     "github.com/prometheus/client_golang/prometheus",
@@ -935,6 +937,7 @@
     "github.com/rs/zerolog",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
+    "github.com/whyrusleeping/go-smux-yamux",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
