@@ -5,8 +5,14 @@ RUN curl -fsSL -o /usr/local/bin/dep https://github.com/golang/dep/releases/down
 
 COPY ./ $GOPATH/src/github.com/zjshen14/go-p2p/
 
-RUN cd $GOPATH/src/github.com/zjshen14/go-p2p && \
-		dep ensure -vendor-only
+ARG SKIP_DEP=false
+
+RUN if [ "$SKIP_DEP" != true ] ; \
+    then \
+	curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh && \
+        cd $GOPATH/src/github.com/zjshen14/go-p2p && \
+        	dep ensure -vendor-only; \
+    fi
 
 run cd $GOPATH/src/github.com/zjshen14/go-p2p && \
 		go build -o ./bin/main -v ./main/main.go

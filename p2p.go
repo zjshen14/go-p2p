@@ -145,8 +145,30 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
+	var extMultiAddr multiaddr.Multiaddr
+	// Set external address and replace private key it external host name is given
+	if cfg.ExternalHostName != "" {
+		extIP, err := EnsureIPv4(cfg.ExternalHostName)
+		if err != nil {
+			return nil, err
+		}
+		sk, _, err = generateKeyPair(fmt.Sprintf("%s:%d", extIP, cfg.ExternalPort))
+		if err != nil {
+			return nil, err
+		}
+		extMultiAddr, err = multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", extIP, cfg.ExternalPort))
+		if err != nil {
+			return nil, err
+		}
+	}
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/%s/tcp/%d", ip, cfg.Port)),
+		libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+			if extMultiAddr != nil {
+				return append(addrs, extMultiAddr)
+			}
+			return addrs
+		}),
 		libp2p.Identity(sk),
 		libp2p.Transport(func(upgrader *stream.Upgrader) *tcp.TcpTransport {
 			return &tcp.TcpTransport{Upgrader: upgrader, ConnectTimeout: cfg.ConnectTimeout}
@@ -156,20 +178,6 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	}
 	if !cfg.SecureIO {
 		opts = append(opts, libp2p.NoSecurity)
-	}
-	if cfg.ExternalHostName != "" {
-		externalIP, err := EnsureIPv4(cfg.ExternalHostName)
-		if err != nil {
-			return nil, err
-		}
-		externalMultiAddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", externalIP, cfg.ExternalPort))
-		if err != nil {
-			return nil, err
-		}
-		addressFactory := func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
-			return append([]multiaddr.Multiaddr{externalMultiAddr}, addrs...)
-		}
-		opts = append(opts, libp2p.AddrsFactory(addressFactory))
 	}
 	host, err := libp2p.New(ctx, opts...)
 	if err != nil {

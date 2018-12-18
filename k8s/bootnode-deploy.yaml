@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: bootnode
-          image: zjshen/go-p2p:latest
+          image: zjshen/go-p2p:test
           imagePullPolicy: Always
           command: ["/go/src/github.com/zjshen14/go-p2p/bin/main"]
           args: ["-secureio=true", "-broadcast=false", "-gossip=true", "-exthost=p2p-bootnode"]
