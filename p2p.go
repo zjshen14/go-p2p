@@ -36,20 +36,24 @@ type HandleUnicast func(data []byte) error
 
 // Config enumerates the configs required by a host
 type Config struct {
-	HostName       string
-	Port           int
-	SecureIO       bool
-	Gossip         bool
-	ConnectTimeout time.Duration
+	HostName         string
+	Port             int
+	ExternalHostName string
+	ExternalPort     int
+	SecureIO         bool
+	Gossip           bool
+	ConnectTimeout   time.Duration
 }
 
 // DefaultConfig is a set of default configs
 var DefaultConfig = Config{
-	HostName:       "127.0.0.1",
-	Port:           30001,
-	SecureIO:       false,
-	Gossip:         false,
-	ConnectTimeout: time.Minute,
+	HostName:         "127.0.0.1",
+	Port:             30001,
+	ExternalHostName: "",
+	ExternalPort:     30001,
+	SecureIO:         false,
+	Gossip:           false,
+	ConnectTimeout:   time.Minute,
 }
 
 // Option defines the option function to modify the config for a host
@@ -67,6 +71,22 @@ func HostName(hostName string) Option {
 func Port(port int) Option {
 	return func(cfg *Config) error {
 		cfg.Port = port
+		return nil
+	}
+}
+
+// ExternalHostName is the option to set the host name or IP address seen from external
+func ExternalHostName(externalHostName string) Option {
+	return func(cfg *Config) error {
+		cfg.ExternalHostName = externalHostName
+		return nil
+	}
+}
+
+// ExternalPort is the option to set the port number seen from external
+func ExternalPort(externalPort int) Option {
+	return func(cfg *Config) error {
+		cfg.ExternalPort = externalPort
 		return nil
 	}
 }
@@ -136,6 +156,20 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	}
 	if !cfg.SecureIO {
 		opts = append(opts, libp2p.NoSecurity)
+	}
+	if cfg.ExternalHostName != "" {
+		externalIP, err := EnsureIPv4(cfg.ExternalHostName)
+		if err != nil {
+			return nil, err
+		}
+		externalMultiAddr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", externalIP, cfg.ExternalPort))
+		if err != nil {
+			return nil, err
+		}
+		addressFactory := func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+			return append(addrs, externalMultiAddr)
+		}
+		opts = append(opts, libp2p.AddrsFactory(addressFactory))
 	}
 	host, err := libp2p.New(ctx, opts...)
 	if err != nil {

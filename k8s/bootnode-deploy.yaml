@@ -22,7 +22,7 @@ spec:
           image: zjshen/go-p2p:latest
           imagePullPolicy: Always
           command: ["/go/src/github.com/zjshen14/go-p2p/bin/main"]
-          args: ["-secureio=true", "-broadcast=false", "-gossip=true"]
+          args: ["-secureio=true", "-broadcast=false", "-gossip=true", "-exthost=p2p-bootnode"]
           ports:
           - containerPort: 30001
             protocol: TCP

@@ -19,6 +19,8 @@ import (
 var (
 	hostName      string
 	port          int
+	extHostName   string
+	extPort       int
 	secureIO      bool
 	gossip        bool
 	bootstrapAddr string
@@ -47,6 +49,8 @@ var (
 func init() {
 	flag.StringVar(&hostName, "host", "127.0.0.1", "Host name or IP address")
 	flag.IntVar(&port, "port", 30001, "Port number")
+	flag.StringVar(&extHostName, "exthost", "", "Host name or IP address seen from external")
+	flag.IntVar(&extPort, "extport", 30001, "Port number seen from external")
 	flag.BoolVar(&secureIO, "secureio", false, "Use secure I/O")
 	flag.BoolVar(&gossip, "gossip", false, "Use Gossip protocol")
 	flag.StringVar(&bootstrapAddr, "bootstrapaddr", "", "Bootstrap node address")
@@ -83,6 +87,8 @@ func main() {
 	options := []p2p.Option{
 		p2p.HostName(hostName),
 		p2p.Port(port),
+		p2p.ExternalHostName(extHostName),
+		p2p.ExternalPort(extPort),
 	}
 
 	if secureIO {
