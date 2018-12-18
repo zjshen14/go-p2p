@@ -167,7 +167,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 			return nil, err
 		}
 		addressFactory := func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
-			return append(addrs, externalMultiAddr)
+			return append([]multiaddr.Multiaddr{externalMultiAddr}, addrs...)
 		}
 		opts = append(opts, libp2p.AddrsFactory(addressFactory))
 	}

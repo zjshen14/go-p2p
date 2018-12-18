@@ -5,7 +5,7 @@ metadata:
   labels:
     app: p2p-node
 spec:
-  replicas: 100
+  replicas: 10
   selector:
     matchLabels:
       app: p2p-node
