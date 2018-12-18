@@ -1,8 +1,5 @@
 FROM golang:1.10.2-stretch
 
-RUN curl -fsSL -o /usr/local/bin/dep https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64 && \
-		chmod +x /usr/local/bin/dep
-
 COPY ./ $GOPATH/src/github.com/zjshen14/go-p2p/
 
 ARG SKIP_DEP=false
