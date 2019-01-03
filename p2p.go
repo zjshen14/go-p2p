@@ -26,6 +26,8 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 	"github.com/whyrusleeping/go-smux-yamux"
+
+	"github.com/iotexproject/iotex-core/logger"
 )
 
 // HandleBroadcast defines the callback function triggered when a broadcast message reaches a host
@@ -218,7 +220,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 		subs:      make(map[string]*pubsub.Subscription),
 		close:     make(chan interface{}),
 	}
-	logger.Info().
+	Logger().Info().
 		Str("address", myHost.Address()).
 		Str("multiAddress", myHost.MultiAddress()).
 		Bool("secureIO", myHost.cfg.SecureIO).
