@@ -26,8 +26,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 	"github.com/whyrusleeping/go-smux-yamux"
-
-	"github.com/iotexproject/iotex-core/logger"
+	"go.uber.org/zap"
 )
 
 // HandleBroadcast defines the callback function triggered when a broadcast message reaches a host
@@ -220,12 +219,11 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 		subs:      make(map[string]*pubsub.Subscription),
 		close:     make(chan interface{}),
 	}
-	Logger().Info().
-		Str("address", myHost.Address()).
-		Str("multiAddress", myHost.MultiAddress()).
-		Bool("secureIO", myHost.cfg.SecureIO).
-		Bool("gossip", myHost.cfg.Gossip).
-		Msg("P2P host started")
+	Logger().Info("P2p host started.",
+		zap.String("address", myHost.Address()),
+		zap.String("multiAddress", myHost.MultiAddress()),
+		zap.Bool("secureIO", myHost.cfg.SecureIO),
+		zap.Bool("gossip", myHost.cfg.Gossip))
 	return &myHost, nil
 }
 
@@ -242,10 +240,9 @@ func (h *Host) Connect(addr string) error {
 	if err := h.host.Connect(h.ctx, *target); err != nil {
 		return err
 	}
-	logger.Debug().
-		Str("address", addr).
-		Str("multiAddress", ma.String()).
-		Msg("P2P peer connected")
+	Logger().Debug("P2P peer connected.",
+		zap.String("address", addr),
+		zap.String("multiAddress", ma.String()))
 	return nil
 }
 
@@ -265,16 +262,16 @@ func (h *Host) AddUnicastPubSub(topic string, callback HandleUnicast) error {
 	h.host.SetStreamHandler(protocol.ID(topic), func(stream net.Stream) {
 		defer func() {
 			if err := stream.Close(); err != nil {
-				logger.Error().Err(err).Msg("Error when closing a unicast stream")
+				Logger().Error("Error when closing a unicast stream.", zap.Error(err))
 			}
 		}()
 		data, err := ioutil.ReadAll(stream)
 		if err != nil {
-			logger.Error().Err(err).Msg("Error when subscribing a unicast message")
+			Logger().Error("Error when subscribing a unicast message.", zap.Error(err))
 			return
 		}
 		if err := callback(data); err != nil {
-			logger.Error().Err(err).Msg("Error when processing a unicast message")
+			Logger().Error("Error when processing a unicast message.", zap.Error(err))
 		}
 	})
 	h.topics[topic] = nil
@@ -305,11 +302,11 @@ func (h *Host) AddBroadcastPubSub(topic string, callback HandleBroadcast) error 
 			default:
 				msg, err := sub.Next(h.ctx)
 				if err != nil {
-					logger.Error().Err(err).Msg("Error when subscribing a broadcast message")
+					Logger().Error("Error when subscribing a broadcast message.", zap.Error(err))
 					continue
 				}
 				if err := callback(msg.Data); err != nil {
-					logger.Error().Err(err).Msg("Error when processing a broadcast message")
+					Logger().Error("Error when processing a broadcast message.", zap.Error(err))
 				}
 			}
 		}

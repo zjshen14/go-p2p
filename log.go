@@ -1,29 +1,28 @@
 package p2p
 
 import (
-	"os"
 	"sync"
 
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 // logger is the logger instance
 var (
-	_loggerMu sync.RWMutex
-	_logger   = zerolog.New(os.Stderr).Level(zerolog.InfoLevel).With().Timestamp().Logger()
+	_loggerMu  sync.RWMutex
+	_logger, _ = zap.NewDevelopment()
 )
 
 // Logger returns the logger
-func Logger() *zerolog.Logger {
+func Logger() *zap.Logger {
 	_loggerMu.RLock()
 	l := _logger
 	_loggerMu.RUnlock()
-	return &l
+	return l
 }
 
 // SetLogger sets the logger
-func SetLogger(l *zerolog.Logger) {
+func SetLogger(l *zap.Logger) {
 	_loggerMu.Lock()
-	_logger = *l
+	_logger = l
 	_loggerMu.Unlock()
 }
