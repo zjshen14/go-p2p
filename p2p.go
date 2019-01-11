@@ -6,9 +6,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ipfs/go-cid"
@@ -175,7 +175,8 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 			return &tcp.TcpTransport{Upgrader: upgrader, ConnectTimeout: cfg.ConnectTimeout}
 		}),
 		libp2p.Muxer("/yamux/2.0.0", sm_yamux.DefaultTransport),
-		libp2p.DisableRelay(),
+		libp2p.EnableRelay(),
+		libp2p.NATPortMap(),
 	}
 	if !cfg.SecureIO {
 		opts = append(opts, libp2p.NoSecurity)
@@ -207,6 +208,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 		port, err := strconv.Atoi(portStr)
 		cfg.Port = port
 	}
+	log.Println("address: ", host.Addrs())
 	myHost := Host{
 		host:      host,
 		cfg:       cfg,
@@ -423,27 +425,28 @@ func generateKeyPair(addr string) (crypto.PrivKey, crypto.PubKey, error) {
 }
 
 func addrToMultiAddr(addr string) (multiaddr.Multiaddr, error) {
-	parts := strings.Split(addr, ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("%s is not a valid address", addr)
-	}
-	// TODO: doesn't support the case of multi IPs binding to the same host name
-	ip, err := EnsureIPv4(parts[0])
-	if err != nil {
-		return nil, err
-	}
-	port, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return nil, err
-	}
-	_, pk, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, port))
-	if err != nil {
-		return nil, err
-	}
-	id, err := peer.IDFromPublicKey(pk)
-	if err != nil {
-		return nil, err
-	}
-	maStr := fmt.Sprintf("/ip4/%s/tcp/%d/ipfs/%s", ip, port, id.Pretty())
-	return multiaddr.NewMultiaddr(maStr)
+	return multiaddr.NewMultiaddr(addr)
+	//parts := strings.Split(addr, ":")
+	//if len(parts) != 2 {
+	//return nil, fmt.Errorf("%s is not a valid address", addr)
+	//}
+	//// TODO: doesn't support the case of multi IPs binding to the same host name
+	//ip, err := EnsureIPv4(parts[0])
+	//if err != nil {
+	//return nil, err
+	//}
+	//port, err := strconv.Atoi(parts[1])
+	//if err != nil {
+	//return nil, err
+	//}
+	//_, pk, err := generateKeyPair(fmt.Sprintf("%s:%d", ip, port))
+	//if err != nil {
+	//return nil, err
+	//}
+	//id, err := peer.IDFromPublicKey(pk)
+	//if err != nil {
+	//return nil, err
+	//}
+	//maStr := fmt.Sprintf("/ip4/%s/tcp/%d/ipfs/%s", ip, port, id.Pretty())
+	//return multiaddr.NewMultiaddr(maStr)
 }

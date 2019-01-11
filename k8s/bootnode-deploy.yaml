@@ -19,12 +19,12 @@ spec:
     spec:
       containers:
         - name: bootnode
-          image: zjshen/go-p2p:test
+          image: yutongp/go-p2p:test
           imagePullPolicy: Always
           command: ["/go/src/github.com/zjshen14/go-p2p/bin/main"]
-          args: ["-secureio=true", "-broadcast=false", "-gossip=true", "-exthost=p2p-bootnode"]
+          args: ["-exthost=35.230.103.170", "-extport=32221"]
           ports:
-          - containerPort: 30001
+          - containerPort: 32221
             protocol: TCP
           - name: metrics
             containerPort: 8080

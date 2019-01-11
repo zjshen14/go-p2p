@@ -6,9 +6,10 @@ metadata:
     app: p2p-node
     role: bootnode
 spec:
-  type: NodePort
+  type: LoadBalancer
   ports:
-  - port: 30001
+  - port: 32221
+    targetPort: 32221
     name: gossip
     protocol: TCP
   selector:

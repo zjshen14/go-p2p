@@ -2,16 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
-	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"sync"
-	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/zjshen14/go-p2p"
 )
@@ -20,55 +16,27 @@ var (
 	hostName      string
 	port          int
 	extHostName   string
+	httpPort      string
 	extPort       int
 	secureIO      bool
 	gossip        bool
 	bootstrapAddr string
-	frequency     int64
 	slowStart     int64
 	broadcast     bool
 )
 
-var (
-	receiveCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "broadcast_message_receive_audit",
-			Help: "Broadcast message_receive_audit",
-		},
-		[]string{"from", "to"},
-	)
-	sendCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "broadcast_message_send_audit",
-			Help: "Broadcast message_send_audit",
-		},
-		[]string{"from"},
-	)
-)
-
 func init() {
 	flag.StringVar(&hostName, "host", "127.0.0.1", "Host name or IP address")
-	flag.IntVar(&port, "port", 30001, "Port number")
+	flag.IntVar(&port, "port", 32221, "Port number")
 	flag.StringVar(&extHostName, "exthost", "", "Host name or IP address seen from external")
-	flag.IntVar(&extPort, "extport", 30001, "Port number seen from external")
-	flag.BoolVar(&secureIO, "secureio", false, "Use secure I/O")
-	flag.BoolVar(&gossip, "gossip", false, "Use Gossip protocol")
+	flag.IntVar(&extPort, "extport", 32221, "Port number seen from external")
+	flag.BoolVar(&secureIO, "secureio", true, "Use secure I/O")
+	flag.BoolVar(&gossip, "gossip", true, "Use Gossip protocol")
 	flag.StringVar(&bootstrapAddr, "bootstrapaddr", "", "Bootstrap node address")
-	flag.Int64Var(&frequency, "frequency", 1000, "How frequent (in ms) to send a message")
+	flag.StringVar(&httpPort, "httpPort", ":8080", "httpPort")
 	flag.Int64Var(&slowStart, "slowstart", 10, "Wait some time (in sec) before sending a message")
 	flag.BoolVar(&broadcast, "broadcast", true, "Broadcast or unicast the messages only to the neighbors")
 	flag.Parse()
-
-	prometheus.MustRegister(receiveCounter)
-	prometheus.MustRegister(sendCounter)
-
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	go func() {
-		if err := http.ListenAndServe(":8080", mux); err != nil {
-			p2p.Logger().Error().Err(err).Msg("Error when serving performance profiling data")
-		}
-	}()
 }
 
 func main() {
@@ -78,10 +46,9 @@ func main() {
 	if portFromEnv, ok := os.LookupEnv("P2P_PORT"); ok {
 		portIntFromEvn, err := strconv.Atoi(portFromEnv)
 		if err != nil {
-			p2p.Logger().Panic().Err(err).Msg("Error when parsing port number from ENV")
+			log.Panicln("Error when parsing port number from ENV, ", err)
 		}
 		port = portIntFromEvn
-
 	}
 
 	options := []p2p.Option{
@@ -100,65 +67,56 @@ func main() {
 
 	host, err := p2p.NewHost(context.Background(), options...)
 	if err != nil {
-		p2p.Logger().Panic().Err(err).Msg("Error when instantiating a host")
+		log.Panicln("Error when instantiating a host: ", err)
 	}
-
-	audit := make(map[string]int, 0)
-	var mutex sync.Mutex
 
 	handleMsg := func(data []byte) error {
-		mutex.Lock()
-		defer mutex.Unlock()
-
-		id := string(data)
-		if _, ok := audit[id]; ok {
-			audit[id]++
-		} else {
-			audit[id] = 1
-		}
-		if audit[id]%100 == 0 {
-			p2p.Logger().Info().Str("id", id).Int("num", audit[id]).Msg("Received messages")
-		}
-		receiveCounter.WithLabelValues(id, host.Address()).Inc()
+		log.Println("Get message: ", string(data))
 		return nil
 	}
+
 	if err := host.AddBroadcastPubSub("measurement", handleMsg); err != nil {
-		p2p.Logger().Panic().Err(err).Msg("Error when adding broadcast pubsub")
+		log.Panicln("Error when adding broadcast pubsub: ", err)
 	}
 	if err := host.AddUnicastPubSub("measurement", handleMsg); err != nil {
-		p2p.Logger().Panic().Err(err).Msg("Error when adding unicast pubsub")
+		log.Panicln("Error when adding unicast pubsub: ", err)
 	}
 
 	if bootstrapAddr != "" {
 		if err := host.Connect(bootstrapAddr); err != nil {
-			p2p.Logger().Panic().Err(err).Msg("Error when connecting to the bootstrap node")
+			log.Panicln("Error when connecting to the bootstrap node: ", err)
 		}
 		if err := host.JoinOverlay(); err != nil {
-			p2p.Logger().Panic().Err(err).Msg("Error when joining the overlay")
+			log.Panicln("Error when joining the overlay: ", err)
 		}
 	}
 
-	tick := time.Tick(time.Duration(frequency) * time.Millisecond)
-	for {
-		select {
-		case <-tick:
-			var err error
-			if broadcast {
-				err = host.Broadcast("measurement", []byte(fmt.Sprintf("%s", host.Address())))
-			} else {
-				neighbors, err := host.Neighbors()
-				if err != nil {
-					p2p.Logger().Error().Err(err).Msg("Error when getting neighbors")
-				}
-				for _, neighbor := range neighbors {
-					host.Unicast(neighbor, "measurement", []byte(fmt.Sprintf("%s", host.Address())))
-				}
-			}
-			if err != nil {
-				p2p.Logger().Error().Err(err).Msg("Error when broadcasting a message")
-			} else {
-				sendCounter.WithLabelValues(host.Address()).Inc()
-			}
+	http.HandleFunc("/unicast", func(w http.ResponseWriter, r *http.Request) {
+		req := struct {
+			Address string `json:"address"`
+			Message string `json:"message"`
+		}{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			log.Fatalln("json unmarhsal failure: ", err)
 		}
+		if err := host.Unicast(req.Address, "measurement", []byte(req.Message)); err != nil {
+			log.Panicln("unicast failure: ", err)
+		}
+	})
+
+	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
+		req := struct {
+			Message string `json:"message"`
+		}{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			log.Fatalln("json unmarhsal failure: ", err)
+		}
+		if err := host.Broadcast("measurement", []byte(req.Message)); err != nil {
+			log.Panicln("broadcast failure: ", err)
+		}
+	})
+
+	if err := http.ListenAndServe(httpPort, nil); err != nil {
+		log.Fatalln("http listen failure: ", err)
 	}
 }
