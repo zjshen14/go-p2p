@@ -26,7 +26,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&hostName, "host", "127.0.0.1", "Host name or IP address")
+	flag.StringVar(&hostName, "host", "0.0.0.0", "Host name or IP address")
 	flag.IntVar(&port, "port", 32221, "Port number")
 	flag.StringVar(&extHostName, "exthost", "", "Host name or IP address seen from external")
 	flag.IntVar(&extPort, "extport", 32221, "Port number seen from external")
