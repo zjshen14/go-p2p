@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
+	p2p "github.com/iotexproject/go-p2p"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"github.com/zjshen14/go-p2p"
+	"go.uber.org/zap"
 )
 
 var (
@@ -66,7 +66,7 @@ func init() {
 	mux.Handle("/metrics", promhttp.Handler())
 	go func() {
 		if err := http.ListenAndServe(":8080", mux); err != nil {
-			p2p.Logger().Error().Err(err).Msg("Error when serving performance profiling data")
+			p2p.Logger().Error("Error when serving performance profiling data.", zap.Error(err))
 		}
 	}()
 }
@@ -78,7 +78,7 @@ func main() {
 	if portFromEnv, ok := os.LookupEnv("P2P_PORT"); ok {
 		portIntFromEvn, err := strconv.Atoi(portFromEnv)
 		if err != nil {
-			p2p.Logger().Panic().Err(err).Msg("Error when parsing port number from ENV")
+			p2p.Logger().Panic("Error when parsing port number from ENV.", zap.Error(err))
 		}
 		port = portIntFromEvn
 
@@ -100,7 +100,7 @@ func main() {
 
 	host, err := p2p.NewHost(context.Background(), options...)
 	if err != nil {
-		p2p.Logger().Panic().Err(err).Msg("Error when instantiating a host")
+		p2p.Logger().Panic("Error when instantiating a host.", zap.Error(err))
 	}
 
 	audit := make(map[string]int, 0)
@@ -117,24 +117,24 @@ func main() {
 			audit[id] = 1
 		}
 		if audit[id]%100 == 0 {
-			p2p.Logger().Info().Str("id", id).Int("num", audit[id]).Msg("Received messages")
+			p2p.Logger().Info("Received messages.", zap.String("id", id), zap.Int("num", audit[id]))
 		}
 		receiveCounter.WithLabelValues(id, host.Address()).Inc()
 		return nil
 	}
 	if err := host.AddBroadcastPubSub("measurement", handleMsg); err != nil {
-		p2p.Logger().Panic().Err(err).Msg("Error when adding broadcast pubsub")
+		p2p.Logger().Panic("Error when adding broadcast pubsub.", zap.Error(err))
 	}
 	if err := host.AddUnicastPubSub("measurement", handleMsg); err != nil {
-		p2p.Logger().Panic().Err(err).Msg("Error when adding unicast pubsub")
+		p2p.Logger().Panic("Error when adding unicast pubsub", zap.Error(err))
 	}
 
 	if bootstrapAddr != "" {
 		if err := host.Connect(bootstrapAddr); err != nil {
-			p2p.Logger().Panic().Err(err).Msg("Error when connecting to the bootstrap node")
+			p2p.Logger().Panic("Error when connecting to the bootstrap node", zap.Error(err))
 		}
 		if err := host.JoinOverlay(); err != nil {
-			p2p.Logger().Panic().Err(err).Msg("Error when joining the overlay")
+			p2p.Logger().Panic("Error when joining the overlay", zap.Error(err))
 		}
 	}
 
@@ -148,14 +148,14 @@ func main() {
 			} else {
 				neighbors, err := host.Neighbors()
 				if err != nil {
-					p2p.Logger().Error().Err(err).Msg("Error when getting neighbors")
+					p2p.Logger().Error("Error when getting neighbors.", zap.Error(err))
 				}
 				for _, neighbor := range neighbors {
 					host.Unicast(neighbor, "measurement", []byte(fmt.Sprintf("%s", host.Address())))
 				}
 			}
 			if err != nil {
-				p2p.Logger().Error().Err(err).Msg("Error when broadcasting a message")
+				p2p.Logger().Error("Error when broadcasting a message.", zap.Error(err))
 			} else {
 				sendCounter.WithLabelValues(host.Address()).Inc()
 			}
