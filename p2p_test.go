@@ -3,17 +3,13 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestBroadcast(t *testing.T) {
-	if testing.Short() {
-		t.Skip()
-	}
-
 	runP2P := func(t *testing.T, options ...Option) {
 		ctx := context.Background()
 		n := 10
@@ -22,22 +18,23 @@ func TestBroadcast(t *testing.T) {
 			opts := []Option{
 				Port(30000 + i),
 				SecureIO(),
+				MasterKey(strconv.Itoa(i)),
 			}
 			opts = append(opts, options...)
 			host, err := NewHost(ctx, opts...)
 			require.NoError(t, err)
 			require.NoError(t, host.AddBroadcastPubSub("test", func(data []byte) error {
 				fmt.Print(string(data))
-				fmt.Printf(", received by %s\n", host.Identity())
+				fmt.Printf(", received by %s\n", host.HostIdentity())
 				return nil
 			}))
 			hosts[i] = host
 		}
 
-		bootstrapAddr := hosts[0].Address()
+		bootstrapAddrs := hosts[0].Addresses()
 		for i := 0; i < n; i++ {
 			if i != 0 {
-				require.NoError(t, hosts[i].Connect(bootstrapAddr))
+				require.NoError(t, hosts[i].Connect(bootstrapAddrs))
 			}
 			require.NoError(t, hosts[i].JoinOverlay())
 		}
@@ -45,11 +42,9 @@ func TestBroadcast(t *testing.T) {
 		for i := 0; i < n; i++ {
 			require.NoError(
 				t,
-				hosts[i].Broadcast("test", []byte(fmt.Sprintf("msg sent from %s", hosts[i].Identity()))),
+				hosts[i].Broadcast("test", []byte(fmt.Sprintf("msg sent from %s", hosts[i].HostIdentity()))),
 			)
 		}
-
-		time.Sleep(5 * time.Second)
 
 		for i := 0; i < n; i++ {
 			require.NoError(t, hosts[i].Close())
@@ -66,28 +61,24 @@ func TestBroadcast(t *testing.T) {
 }
 
 func TestUnicast(t *testing.T) {
-	if testing.Short() {
-		t.Skip()
-	}
-
 	ctx := context.Background()
 	n := 10
 	hosts := make([]*Host, n)
 	for i := 0; i < n; i++ {
-		host, err := NewHost(ctx, Port(30000+i), SecureIO())
+		host, err := NewHost(ctx, Port(30000+i), SecureIO(), MasterKey(strconv.Itoa(i)))
 		require.NoError(t, err)
 		require.NoError(t, host.AddUnicastPubSub("test", func(data []byte) error {
 			fmt.Print(string(data))
-			fmt.Printf(", received by %s\n", host.Identity())
+			fmt.Printf(", received by %s\n", host.HostIdentity())
 			return nil
 		}))
 		hosts[i] = host
 	}
 
-	bootstrapAddr := hosts[0].Address()
+	bootstrapAddrs := hosts[0].Addresses()
 	for i := 0; i < n; i++ {
 		if i != 0 {
-			require.NoError(t, hosts[i].Connect(bootstrapAddr))
+			require.NoError(t, hosts[i].Connect(bootstrapAddrs))
 		}
 		require.NoError(t, hosts[i].JoinOverlay())
 	}
@@ -100,8 +91,12 @@ func TestUnicast(t *testing.T) {
 		for _, neighbor := range neighbors {
 			require.NoError(
 				t,
-				host.Unicast(neighbor, "test", []byte(fmt.Sprintf("msg sent from %s", hosts[i].Identity()))),
+				host.Unicast(neighbor, "test", []byte(fmt.Sprintf("msg sent from %s", hosts[i].HostIdentity()))),
 			)
 		}
+	}
+
+	for i := 0; i < n; i++ {
+		require.NoError(t, hosts[i].Close())
 	}
 }

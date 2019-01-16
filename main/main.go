@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/multiformats/go-multiaddr"
+
 	p2p "github.com/iotexproject/go-p2p"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -119,7 +121,7 @@ func main() {
 		if audit[id]%100 == 0 {
 			p2p.Logger().Info("Received messages.", zap.String("id", id), zap.Int("num", audit[id]))
 		}
-		receiveCounter.WithLabelValues(id, host.Address()).Inc()
+		receiveCounter.WithLabelValues(id, host.HostIdentity()).Inc()
 		return nil
 	}
 	if err := host.AddBroadcastPubSub("measurement", handleMsg); err != nil {
@@ -130,7 +132,11 @@ func main() {
 	}
 
 	if bootstrapAddr != "" {
-		if err := host.Connect(bootstrapAddr); err != nil {
+		ma, err := multiaddr.NewMultiaddr(bootstrapAddr)
+		if err != nil {
+			p2p.Logger().Panic("Error when parsing to the bootstrap node address", zap.Error(err))
+		}
+		if err := host.Connect([]multiaddr.Multiaddr{ma}); err != nil {
 			p2p.Logger().Panic("Error when connecting to the bootstrap node", zap.Error(err))
 		}
 		if err := host.JoinOverlay(); err != nil {
@@ -144,20 +150,20 @@ func main() {
 		case <-tick:
 			var err error
 			if broadcast {
-				err = host.Broadcast("measurement", []byte(fmt.Sprintf("%s", host.Address())))
+				err = host.Broadcast("measurement", []byte(fmt.Sprintf("%s", host.HostIdentity())))
 			} else {
 				neighbors, err := host.Neighbors()
 				if err != nil {
 					p2p.Logger().Error("Error when getting neighbors.", zap.Error(err))
 				}
 				for _, neighbor := range neighbors {
-					host.Unicast(neighbor, "measurement", []byte(fmt.Sprintf("%s", host.Address())))
+					host.Unicast(neighbor, "measurement", []byte(fmt.Sprintf("%s", host.HostIdentity())))
 				}
 			}
 			if err != nil {
 				p2p.Logger().Error("Error when broadcasting a message.", zap.Error(err))
 			} else {
-				sendCounter.WithLabelValues(host.Address()).Inc()
+				sendCounter.WithLabelValues(host.HostIdentity()).Inc()
 			}
 		}
 	}
