@@ -14,6 +14,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p-circuit"
 	"github.com/libp2p/go-libp2p-crypto"
 	"github.com/libp2p/go-libp2p-host"
 	"github.com/libp2p/go-libp2p-kad-dht"
@@ -45,6 +46,7 @@ type Config struct {
 	Gossip           bool
 	ConnectTimeout   time.Duration
 	MasterKey        string
+	Relay            string // could be `active`, `nat`, `disable`
 }
 
 // DefaultConfig is a set of default configs
@@ -57,6 +59,7 @@ var DefaultConfig = Config{
 	Gossip:           false,
 	ConnectTimeout:   time.Minute,
 	MasterKey:        "",
+	Relay:            "disable",
 }
 
 // Option defines the option function to modify the config for a host
@@ -122,6 +125,14 @@ func ConnectTimeout(timout time.Duration) Option {
 func MasterKey(masterKey string) Option {
 	return func(cfg *Config) error {
 		cfg.MasterKey = masterKey
+		return nil
+	}
+}
+
+// WithRelay config relay option.
+func WithRelay(relayType string) Option {
+	return func(cfg *Config) error {
+		cfg.Relay = relayType
 		return nil
 	}
 }
@@ -195,11 +206,20 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 			return &tcp.TcpTransport{Upgrader: upgrader, ConnectTimeout: cfg.ConnectTimeout}
 		}),
 		libp2p.Muxer("/yamux/2.0.0", sm_yamux.DefaultTransport),
-		libp2p.DisableRelay(),
 	}
 	if !cfg.SecureIO {
 		opts = append(opts, libp2p.NoSecurity)
 	}
+
+	// relay option
+	if cfg.Relay == "active" {
+		opts = append(opts, libp2p.EnableRelay(relay.OptActive, relay.OptHop))
+	} else if cfg.Relay == "nat" {
+		opts = append(opts, libp2p.EnableRelay(), libp2p.NATPortMap())
+	} else {
+		opts = append(opts, libp2p.DisableRelay())
+	}
+
 	host, err := libp2p.New(ctx, opts...)
 	if err != nil {
 		return nil, err
