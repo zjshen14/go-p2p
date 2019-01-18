@@ -32,7 +32,7 @@ import (
 type HandleBroadcast func(ctx context.Context, data []byte) error
 
 // HandleUnicast defines the callback function triggered when a unicast message reaches a host
-type HandleUnicast func(ctx context.Context, w io.WriteCloser, data []byte) error
+type HandleUnicast func(ctx context.Context, w io.Writer, data []byte) error
 
 // Config enumerates the configs required by a host
 type Config struct {

@@ -68,7 +68,7 @@ func TestUnicast(t *testing.T) {
 	for i := 0; i < n; i++ {
 		host, err := NewHost(ctx, Port(30000+i), SecureIO(), MasterKey(strconv.Itoa(i)))
 		require.NoError(t, err)
-		require.NoError(t, host.AddUnicastPubSub("test", func(ctx context.Context, w io.WriteCloser, data []byte) error {
+		require.NoError(t, host.AddUnicastPubSub("test", func(ctx context.Context, w io.Writer, data []byte) error {
 			fmt.Print(string(data))
 			fmt.Printf(", received by %s\n", host.HostIdentity())
 			return nil

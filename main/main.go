@@ -125,7 +125,7 @@ func main() {
 		receiveCounter.WithLabelValues(id, host.HostIdentity()).Inc()
 		return nil
 	}
-	HandleUnicastMsg := func(ctx context.Context, w io.WriteCloser, data []byte) error {
+	HandleUnicastMsg := func(ctx context.Context, w io.Writer, data []byte) error {
 		return HandleMsg(ctx, data)
 	}
 	if err := host.AddBroadcastPubSub("measurement", HandleMsg); err != nil {
