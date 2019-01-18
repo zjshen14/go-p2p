@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestBroadcast(t *testing.T) {
 			opts = append(opts, options...)
 			host, err := NewHost(ctx, opts...)
 			require.NoError(t, err)
-			require.NoError(t, host.AddBroadcastPubSub("test", func(data []byte) error {
+			require.NoError(t, host.AddBroadcastPubSub("test", func(ctx context.Context, data []byte) error {
 				fmt.Print(string(data))
 				fmt.Printf(", received by %s\n", host.HostIdentity())
 				return nil
@@ -31,12 +32,12 @@ func TestBroadcast(t *testing.T) {
 			hosts[i] = host
 		}
 
-		bootstrapAddrs := hosts[0].Addresses()
+		bootstrapInfo := hosts[0].Info()
 		for i := 0; i < n; i++ {
 			if i != 0 {
-				require.NoError(t, hosts[i].Connect(bootstrapAddrs))
+				require.NoError(t, hosts[i].Connect(ctx, bootstrapInfo))
 			}
-			require.NoError(t, hosts[i].JoinOverlay())
+			require.NoError(t, hosts[i].JoinOverlay(ctx))
 		}
 
 		for i := 0; i < n; i++ {
@@ -67,7 +68,7 @@ func TestUnicast(t *testing.T) {
 	for i := 0; i < n; i++ {
 		host, err := NewHost(ctx, Port(30000+i), SecureIO(), MasterKey(strconv.Itoa(i)))
 		require.NoError(t, err)
-		require.NoError(t, host.AddUnicastPubSub("test", func(data []byte) error {
+		require.NoError(t, host.AddUnicastPubSub("test", func(ctx context.Context, w io.Writer, data []byte) error {
 			fmt.Print(string(data))
 			fmt.Printf(", received by %s\n", host.HostIdentity())
 			return nil
@@ -75,23 +76,23 @@ func TestUnicast(t *testing.T) {
 		hosts[i] = host
 	}
 
-	bootstrapAddrs := hosts[0].Addresses()
+	bootstrapInfo := hosts[0].Info()
 	for i := 0; i < n; i++ {
 		if i != 0 {
-			require.NoError(t, hosts[i].Connect(bootstrapAddrs))
+			require.NoError(t, hosts[i].Connect(ctx, bootstrapInfo))
 		}
-		require.NoError(t, hosts[i].JoinOverlay())
+		require.NoError(t, hosts[i].JoinOverlay(ctx))
 	}
 
 	for i, host := range hosts {
-		neighbors, err := host.Neighbors()
+		neighbors, err := host.Neighbors(ctx)
 		require.NoError(t, err)
 		require.True(t, len(neighbors) > 0)
 
 		for _, neighbor := range neighbors {
 			require.NoError(
 				t,
-				host.Unicast(neighbor, "test", []byte(fmt.Sprintf("msg sent from %s", hosts[i].HostIdentity()))),
+				host.Unicast(ctx, neighbor, "test", []byte(fmt.Sprintf("msg sent from %s", hosts[i].HostIdentity()))),
 			)
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -108,7 +109,7 @@ func main() {
 	audit := make(map[string]int, 0)
 	var mutex sync.Mutex
 
-	handleMsg := func(data []byte) error {
+	HandleMsg := func(ctx context.Context, data []byte) error {
 		mutex.Lock()
 		defer mutex.Unlock()
 
@@ -124,10 +125,13 @@ func main() {
 		receiveCounter.WithLabelValues(id, host.HostIdentity()).Inc()
 		return nil
 	}
-	if err := host.AddBroadcastPubSub("measurement", handleMsg); err != nil {
+	HandleUnicastMsg := func(ctx context.Context, w io.Writer, data []byte) error {
+		return HandleMsg(ctx, data)
+	}
+	if err := host.AddBroadcastPubSub("measurement", HandleMsg); err != nil {
 		p2p.Logger().Panic("Error when adding broadcast pubsub.", zap.Error(err))
 	}
-	if err := host.AddUnicastPubSub("measurement", handleMsg); err != nil {
+	if err := host.AddUnicastPubSub("measurement", HandleUnicastMsg); err != nil {
 		p2p.Logger().Panic("Error when adding unicast pubsub", zap.Error(err))
 	}
 
@@ -136,10 +140,10 @@ func main() {
 		if err != nil {
 			p2p.Logger().Panic("Error when parsing to the bootstrap node address", zap.Error(err))
 		}
-		if err := host.Connect([]multiaddr.Multiaddr{ma}); err != nil {
+		if err := host.ConnectWithMultiaddr(context.Background(), ma); err != nil {
 			p2p.Logger().Panic("Error when connecting to the bootstrap node", zap.Error(err))
 		}
-		if err := host.JoinOverlay(); err != nil {
+		if err := host.JoinOverlay(context.Background()); err != nil {
 			p2p.Logger().Panic("Error when joining the overlay", zap.Error(err))
 		}
 	}
@@ -152,12 +156,12 @@ func main() {
 			if broadcast {
 				err = host.Broadcast("measurement", []byte(fmt.Sprintf("%s", host.HostIdentity())))
 			} else {
-				neighbors, err := host.Neighbors()
+				neighbors, err := host.Neighbors(context.Background())
 				if err != nil {
 					p2p.Logger().Error("Error when getting neighbors.", zap.Error(err))
 				}
 				for _, neighbor := range neighbors {
-					host.Unicast(neighbor, "measurement", []byte(fmt.Sprintf("%s", host.HostIdentity())))
+					host.Unicast(context.Background(), neighbor, "measurement", []byte(fmt.Sprintf("%s", host.HostIdentity())))
 				}
 			}
 			if err != nil {

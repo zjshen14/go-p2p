@@ -4,13 +4,11 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/binary"
-	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"time"
-
-	"github.com/libp2p/go-libp2p-peerstore"
 
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p"
@@ -19,7 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p-host"
 	"github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p-net"
-	"github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-peerstore"
 	"github.com/libp2p/go-libp2p-protocol"
 	"github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p-transport-upgrader"
@@ -31,10 +29,10 @@ import (
 )
 
 // HandleBroadcast defines the callback function triggered when a broadcast message reaches a host
-type HandleBroadcast func(data []byte) error
+type HandleBroadcast func(ctx context.Context, data []byte) error
 
 // HandleUnicast defines the callback function triggered when a unicast message reaches a host
-type HandleUnicast func(data []byte) error
+type HandleUnicast func(ctx context.Context, w io.Writer, data []byte) error
 
 // Config enumerates the configs required by a host
 type Config struct {
@@ -141,7 +139,6 @@ func WithRelay(relayType string) Option {
 type Host struct {
 	host      host.Host
 	cfg       Config
-	ctx       context.Context
 	topics    map[string]interface{}
 	kad       *dht.IpfsDHT
 	kadKey    cid.Cid
@@ -149,6 +146,7 @@ type Host struct {
 	pubs      map[string]*pubsub.PubSub
 	subs      map[string]*pubsub.Subscription
 	close     chan interface{}
+	ctx       context.Context
 }
 
 // NewHost constructs a host struct
@@ -240,7 +238,6 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	myHost := Host{
 		host:      host,
 		cfg:       cfg,
-		ctx:       ctx,
 		topics:    make(map[string]interface{}),
 		kad:       kad,
 		kadKey:    cid,
@@ -248,6 +245,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 		pubs:      make(map[string]*pubsub.PubSub),
 		subs:      make(map[string]*pubsub.Subscription),
 		close:     make(chan interface{}),
+		ctx:       ctx,
 	}
 	addrs := make([]string, 0)
 	for _, ma := range myHost.Addresses() {
@@ -261,11 +259,11 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 }
 
 // JoinOverlay triggers the host to join the DHT overlay
-func (h *Host) JoinOverlay() error {
-	if err := h.kad.Provide(h.ctx, h.kadKey, true); err == nil {
+func (h *Host) JoinOverlay(ctx context.Context) error {
+	if err := h.kad.Provide(ctx, h.kadKey, true); err == nil {
 		return nil
 	}
-	return h.kad.Bootstrap(h.ctx)
+	return h.kad.Bootstrap(ctx)
 }
 
 // AddUnicastPubSub adds a unicast topic that the host will pay attention to
@@ -284,7 +282,8 @@ func (h *Host) AddUnicastPubSub(topic string, callback HandleUnicast) error {
 			Logger().Error("Error when subscribing a unicast message.", zap.Error(err))
 			return
 		}
-		if err := callback(data); err != nil {
+		ctx := context.WithValue(context.Background(), unicastCtxKey{}, stream)
+		if err := callback(ctx, stream, data); err != nil {
 			Logger().Error("Error when processing a unicast message.", zap.Error(err))
 		}
 	})
@@ -314,12 +313,14 @@ func (h *Host) AddBroadcastPubSub(topic string, callback HandleBroadcast) error 
 			case <-h.close:
 				return
 			default:
-				msg, err := sub.Next(h.ctx)
+				ctx := context.Background()
+				msg, err := sub.Next(ctx)
 				if err != nil {
 					Logger().Error("Error when subscribing a broadcast message.", zap.Error(err))
 					continue
 				}
-				if err := callback(msg.Data); err != nil {
+				ctx = context.WithValue(ctx, broadcastCtxKey{}, msg)
+				if err := callback(ctx, msg.Data); err != nil {
 					Logger().Error("Error when processing a broadcast message.", zap.Error(err))
 				}
 			}
@@ -328,24 +329,31 @@ func (h *Host) AddBroadcastPubSub(topic string, callback HandleBroadcast) error 
 	return nil
 }
 
-// Connect connects a peer given the multi address
-func (h *Host) Connect(mas []multiaddr.Multiaddr) error {
-	if len(mas) == 0 {
-		errors.New("empty address slice")
+// ConnectWithMultiaddr connects a peer given the multi address
+func (h *Host) ConnectWithMultiaddr(ctx context.Context, ma multiaddr.Multiaddr) error {
+	target, err := peerstore.InfoFromP2pAddr(ma)
+	if err != nil {
+		return err
 	}
-	for _, ma := range mas {
-		target, err := peerstore.InfoFromP2pAddr(mas[0])
-		if err != nil {
-			return err
-		}
-		if err := h.host.Connect(h.ctx, *target); err != nil {
-			return err
-		}
-		Logger().Debug(
-			"P2P peer connected.",
-			zap.String("multiAddress", ma.String()),
-		)
+	if err := h.host.Connect(ctx, *target); err != nil {
+		return err
 	}
+	Logger().Debug(
+		"P2P peer connected.",
+		zap.String("multiAddress", ma.String()),
+	)
+	return nil
+}
+
+// Connect connects a peer.
+func (h *Host) Connect(ctx context.Context, target peerstore.PeerInfo) error {
+	if err := h.host.Connect(ctx, target); err != nil {
+		return err
+	}
+	Logger().Debug(
+		"P2P peer connected.",
+		zap.String("peer", fmt.Sprintf("%+v", target)),
+	)
 	return nil
 }
 
@@ -359,19 +367,11 @@ func (h *Host) Broadcast(topic string, data []byte) error {
 }
 
 // Unicast sends a message to a peer on the given address
-func (h *Host) Unicast(mas []multiaddr.Multiaddr, topic string, data []byte) error {
-	if len(mas) == 0 {
-		errors.New("empty address slice")
-	}
-	peerIDStr, err := mas[0].ValueForProtocol(multiaddr.P_IPFS)
-	peerID, err := peer.IDB58Decode(peerIDStr)
-	if err != nil {
+func (h *Host) Unicast(ctx context.Context, target peerstore.PeerInfo, topic string, data []byte) error {
+	if err := h.Connect(ctx, target); err != nil {
 		return err
 	}
-	if err := h.Connect(mas); err != nil {
-		return err
-	}
-	stream, err := h.host.NewStream(h.ctx, peerID, protocol.ID(topic))
+	stream, err := h.host.NewStream(ctx, target.ID, protocol.ID(topic))
 	if err != nil {
 		return err
 	}
@@ -398,20 +398,20 @@ func (h *Host) Addresses() []multiaddr.Multiaddr {
 	return addrs
 }
 
+// Info returns host's perr info.
+func (h *Host) Info() peerstore.PeerInfo {
+	return peerstore.PeerInfo{ID: h.host.ID(), Addrs: h.host.Addrs()}
+}
+
 // Neighbors returns the closest peer addresses
-func (h *Host) Neighbors() ([][]multiaddr.Multiaddr, error) {
-	peers, err := h.kad.GetClosestPeers(h.ctx, h.kadKey.String())
+func (h *Host) Neighbors(ctx context.Context) ([]peerstore.PeerInfo, error) {
+	peers, err := h.kad.GetClosestPeers(ctx, h.kadKey.String())
 	if err != nil {
 		return nil, err
 	}
-	neighbors := make([][]multiaddr.Multiaddr, 0)
+	neighbors := make([]peerstore.PeerInfo, 0)
 	for peer := range peers {
-		neighborAddrs := make([]multiaddr.Multiaddr, 0)
-		peerID, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ipfs/%s", peer.Pretty()))
-		for _, ma := range h.kad.FindLocal(peer).Addrs {
-			neighborAddrs = append(neighborAddrs, ma.Encapsulate(peerID))
-		}
-		neighbors = append(neighbors, neighborAddrs)
+		neighbors = append(neighbors, h.kad.FindLocal(peer))
 	}
 	return neighbors, nil
 }
