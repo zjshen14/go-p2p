@@ -19,6 +19,6 @@ func GetUnicastStream(ctx context.Context) (net.Stream, bool) {
 
 // GetBroadcastMsg retrieves *pubsub.Message from broadcast message context.
 func GetBroadcastMsg(ctx context.Context) (*pubsub.Message, bool) {
-	msg, ok := ctx.Value(unicastCtxKey{}).(*pubsub.Message)
+	msg, ok := ctx.Value(broadcastCtxKey{}).(*pubsub.Message)
 	return msg, ok
 }
