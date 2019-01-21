@@ -180,7 +180,7 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 		masterKey := cfg.MasterKey
 		// If ID is not given use network address instead
 		if masterKey == "" {
-			masterKey = fmt.Sprintf("%s:%d", extIP, cfg.ExternalPort)
+			masterKey = fmt.Sprintf("%s:%d", cfg.ExternalHostName, cfg.ExternalPort)
 		}
 		sk, _, err = generateKeyPair(masterKey)
 		if err != nil {
