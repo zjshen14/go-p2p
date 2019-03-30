@@ -419,7 +419,6 @@ func (h *Host) Neighbors(ctx context.Context) ([]peerstore.PeerInfo, error) {
 	for _, p := range dedupedPeers {
 		neighbors = append(neighbors, h.kad.FindLocal(p))
 	}
-	fmt.Println(len(neighbors))
 	return neighbors, nil
 }
 
