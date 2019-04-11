@@ -415,15 +415,15 @@
   version = "v0.0.2"
 
 [[projects]]
-  digest = "1:fa7932725d0b603c680dc76cdcebd4d2e2736cdc4d8d99a06d10bbe0faee4ead"
+  digest = "1:4dc637bce7af8972c542b26038fcf246a446e71d3397f2a9b05eab0f1d043815"
   name = "github.com/libp2p/go-libp2p-peer"
   packages = [
     ".",
     "peerset",
   ]
   pruneopts = "UT"
-  revision = "6ce6ea8d949b826bc1e663ba5bc321c3cc9c2cce"
-  version = "v0.0.1"
+  revision = "96d6d7940e6fc555240a92d1b4615049cd451da2"
+  version = "v0.1.0"
 
 [[projects]]
   digest = "1:bd675ce3368b6c46d2ab17ebe34f9a6fe2b5e9f6bcfafcfd7a15a81db19eb36b"
