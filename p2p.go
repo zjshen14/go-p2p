@@ -298,7 +298,12 @@ func (h *Host) AddBroadcastPubSub(topic string, callback HandleBroadcast) error 
 	if _, ok := h.pubs[topic]; ok {
 		return nil
 	}
-	pub, err := h.newPubSub(h.ctx, h.host)
+	pub, err := h.newPubSub(
+		h.ctx,
+		h.host,
+		pubsub.WithMessageSigning(false),
+		pubsub.WithStrictSignatureVerification(false),
+	)
 	if err != nil {
 		return err
 	}
