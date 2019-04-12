@@ -89,6 +89,7 @@ var DefaultConfig = Config{
 	BlackListCleanupInterval: 600 * time.Second,
 	ConnGracePeriod:          0,
 	EnableRateLimit:          false,
+	RateLimit:                DefaultRatelimitConfig,
 }
 
 var DefaultRatelimitConfig = RateLimitConfig{
@@ -346,7 +347,8 @@ func (h *Host) AddUnicastPubSub(topic string, callback HandleUnicast) error {
 				Logger().Error("Error when closing a unicast stream.", zap.Error(err))
 			}
 		}()
-		if !h.unicastLimiter.Allow() {
+		if h.cfg.EnableRateLimit && !h.unicastLimiter.Allow() {
+			Logger().Warn("Drop unicast sream due to high traffic volume.")
 			return
 		}
 		/*
