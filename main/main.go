@@ -143,9 +143,7 @@ func main() {
 		if err := host.ConnectWithMultiaddr(context.Background(), ma); err != nil {
 			p2p.Logger().Panic("Error when connecting to the bootstrap node", zap.Error(err))
 		}
-		if err := host.JoinOverlay(context.Background()); err != nil {
-			p2p.Logger().Panic("Error when joining the overlay", zap.Error(err))
-		}
+		host.JoinOverlay(context.Background())
 	}
 
 	tick := time.Tick(time.Duration(frequency) * time.Millisecond)

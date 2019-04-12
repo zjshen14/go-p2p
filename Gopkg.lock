@@ -969,6 +969,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/hashicorp/golang-lru",
     "github.com/ipfs/go-cid",
     "github.com/libp2p/go-libp2p",
     "github.com/libp2p/go-libp2p-circuit",
@@ -986,6 +987,7 @@
     "github.com/libp2p/go-tcp-transport",
     "github.com/multiformats/go-multiaddr",
     "github.com/multiformats/go-multihash",
+    "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/stretchr/testify/assert",

@@ -60,7 +60,6 @@ type Config struct {
 	BlackListCleanupInterval time.Duration
 	AvgNumMsgsPerSec         int
 	BurstNumMsgsPerSec       int
-	ValidationChanSize       int
 	ConnGracePeriod          time.Duration
 	RateLimit                bool
 }
@@ -81,9 +80,8 @@ var DefaultConfig = Config{
 	RateLimiterLRUSize:       1000,
 	BlackListLRUSize:         1000,
 	BlackListCleanupInterval: 600 * time.Second,
-	AvgNumMsgsPerSec:         50,
-	BurstNumMsgsPerSec:       400,
-	ValidationChanSize:       500,
+	AvgNumMsgsPerSec:         300,
+	BurstNumMsgsPerSec:       500,
 	ConnGracePeriod:          0,
 	RateLimit:                false,
 }
@@ -142,7 +140,7 @@ func Gossip() Option {
 // ConnectTimeout is the option to override the connect timeout
 func ConnectTimeout(timout time.Duration) Option {
 	return func(cfg *Config) error {
-		cfg.Gossip = true
+		cfg.ConnectTimeout = timout
 		return nil
 	}
 }
@@ -158,7 +156,7 @@ func MasterKey(masterKey string) Option {
 // RateLimit is to indicate limiting msg rate from peers
 func RateLimit() Option {
 	return func(cfg *Config) error {
-		cfg.Gossip = true
+		cfg.RateLimit = true
 		return nil
 	}
 }
@@ -374,7 +372,6 @@ func (h *Host) AddBroadcastPubSub(topic string, callback HandleBroadcast) error 
 		h.host,
 		pubsub.WithMessageSigning(true),
 		pubsub.WithStrictSignatureVerification(true),
-		pubsub.WithValidateThrottle(h.cfg.ValidationChanSize),
 		pubsub.WithBlacklist(blacklist),
 	)
 	if err != nil {
@@ -407,6 +404,7 @@ func (h *Host) AddBroadcastPubSub(topic string, callback HandleBroadcast) error 
 				}
 				if !allowed {
 					h.blacklists[topic].Add(src)
+					Logger().Warn("Blacklist a peer", zap.Any("id", src))
 					continue
 				}
 				h.blacklists[topic].Remove(src)
