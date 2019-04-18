@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-
 	"golang.org/x/time/rate"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -35,6 +34,10 @@ import (
 	sm_yamux "github.com/whyrusleeping/go-smux-yamux"
 	"go.uber.org/zap"
 )
+
+func init() {
+	multiaddr.SwapToP2pMultiaddrs()
+}
 
 // HandleBroadcast defines the callback function triggered when a broadcast message reaches a host
 type HandleBroadcast func(ctx context.Context, data []byte) error
