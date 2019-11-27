@@ -1,17 +1,16 @@
-FROM golang:1.10.2-stretch
+FROM golang:1.13.4-stretch
 
-COPY ./ $GOPATH/src/github.com/zjshen14/go-p2p/
+ENV GO111MODULE=on
 
-ARG SKIP_DEP=false
+WORKDIR apps/p2p
 
-RUN if [ "$SKIP_DEP" != true ] ; \
-    then \
-	curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh && \
-        cd $GOPATH/src/github.com/zjshen14/go-p2p && \
-        	dep ensure -vendor-only; \
-    fi
+COPY go.mod .
+COPY go.sum .
 
-run cd $GOPATH/src/github.com/zjshen14/go-p2p && \
-		go build -o ./bin/main -v ./main/main.go
+RUN go mod download
 
-CMD ["/go/src/github.com/zjshen14/go-p2p/bin/main"]
+COPY . .
+
+RUN go build -o /usr/local/bin/p2p -v ./main/main.go
+
+CMD ["p2p"]

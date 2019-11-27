@@ -94,12 +94,11 @@ func main() {
 		p2p.ExternalPort(extPort),
 	}
 
-	if secureIO {
-		options = append(options, p2p.SecureIO())
-	}
 	if gossip {
 		options = append(options, p2p.Gossip())
 	}
+	options = append(options, p2p.MasterKey("123"))
+	options = append(options, p2p.SecureIO())
 
 	host, err := p2p.NewHost(context.Background(), options...)
 	if err != nil {
