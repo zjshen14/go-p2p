@@ -468,8 +468,8 @@ func (h *Host) AddBroadcastPubSub(ctx context.Context, topic string, callback Ha
 					continue
 				}
 				h.blacklists[topic].Remove(src)
-				ctx = context.WithValue(ctx, broadcastCtxKey{}, msg)
-				if err := callback(ctx, msg.Data); err != nil {
+				bctx := context.WithValue(ctx, broadcastCtxKey{}, msg)
+				if err := callback(bctx, msg.Data); err != nil {
 					Logger().Error("Error when processing a broadcast message.", zap.Error(err))
 				}
 			}
