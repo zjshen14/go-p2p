@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"strconv"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -20,7 +21,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/libp2p/go-libp2p"
-	relay "github.com/libp2p/go-libp2p-circuit"
+	"github.com/libp2p/go-libp2p-circuit"
 	"github.com/libp2p/go-libp2p-connmgr"
 	"github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -36,9 +37,6 @@ import (
 	"github.com/libp2p/go-tcp-transport"
 )
 
-// ProtocolDHT is the IoTeX DHT protocol name
-const ProtocolDHT protocol.ID = "/iotex"
-
 type (
 	// HandleBroadcast defines the callback function triggered when a broadcast message reaches a host
 	HandleBroadcast func(ctx context.Context, data []byte) error
@@ -48,6 +46,7 @@ type (
 
 	// Config enumerates the configs required by a host
 	Config struct {
+		ProtocolID               protocol.ID     `yaml:"protocolID "`
 		HostName                 string          `yaml:"hostName"`
 		Port                     int             `yaml:"port"`
 		ExternalHostName         string          `yaml:"externalHostName"`
@@ -100,6 +99,7 @@ var (
 		EnableRateLimit:          false,
 		RateLimit:                DefaultRatelimitConfig,
 		PrivateNetworkPSK:        "",
+		ProtocolID:               "/iotex",
 	}
 
 	// DefaultRatelimitConfig is the default rate limit config
@@ -213,6 +213,17 @@ func PrivateNetworkPSK(privateNetworkPSK string) Option {
 	}
 }
 
+// DHTProtocolID returns the prefix of dht protocol.
+// MainNet uses "/iotex", while other networks use "/iotex*"(e.g. "/iotex2", "iotex3")
+func DHTProtocolID(chainID uint32) Option {
+	return func(cfg *Config) error {
+		if chainID != 1 {
+			cfg.ProtocolID = protocol.ID("/iotex" + strconv.Itoa(int(chainID)))
+		}
+		return nil
+	}
+}
+
 // Host is the main struct that represents a host that communicating with the rest of the P2P networks
 type Host struct {
 	host             core.Host
@@ -320,8 +331,9 @@ func NewHost(ctx context.Context, options ...Option) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	kad, err := dht.New(ctx, host, dht.ProtocolPrefix(ProtocolDHT), dht.Mode(dht.ModeServer))
+	kad, err := dht.New(ctx, host, dht.ProtocolPrefix(cfg.ProtocolID), dht.Mode(dht.ModeServer))
 	if err != nil {
+		return nil, err
 	}
 	if err := kad.Bootstrap(ctx); err != nil {
 		return nil, err
