@@ -21,17 +21,17 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-circuit"
-	"github.com/libp2p/go-libp2p-connmgr"
-	"github.com/libp2p/go-libp2p-core"
+	relay "github.com/libp2p/go-libp2p-circuit"
+	connmgr "github.com/libp2p/go-libp2p-connmgr"
+	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/pnet"
 	"github.com/libp2p/go-libp2p-core/protocol"
-	"github.com/libp2p/go-libp2p-discovery"
-	"github.com/libp2p/go-libp2p-kad-dht"
-	"github.com/libp2p/go-libp2p-pubsub"
-	"github.com/libp2p/go-libp2p-secio"
+	discovery "github.com/libp2p/go-libp2p-discovery"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	secio "github.com/libp2p/go-libp2p-secio"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 	yamux "github.com/libp2p/go-libp2p-yamux"
 	"github.com/libp2p/go-tcp-transport"
@@ -88,7 +88,7 @@ var (
 		Gossip:                   false,
 		ConnectTimeout:           time.Minute,
 		MasterKey:                "",
-		Relay:                    "disable",
+		Relay:                    "nat",
 		ConnLowWater:             200,
 		ConnHighWater:            500,
 		RateLimiterLRUSize:       1000,
